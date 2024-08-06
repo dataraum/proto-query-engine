@@ -14,14 +14,22 @@ use object_store::{ObjectStore, PutPayload};
 use once_cell::sync::Lazy;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::sync::OnceLock;
 use url::Url;
 use utils::{get_file_folder, get_from_promise};
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsError;
 use web_sys::{File, FileSystemFileHandle};
 
+fn mem_url() -> &'static Box<Url> {
+    static MEM_LOCATION: OnceLock<Box<Url>> = OnceLock::new();
+    MEM_LOCATION.get_or_init(|| Box::new(Url::parse("mem://").unwrap()))
+}
+
 static CTX: Lazy<Mutex<SessionContext>> = Lazy::new(|| {
     let ctx = SessionContext::new();
+    let mem_store = InMemory::new();
+    ctx.register_object_store(mem_url().as_ref(), Arc::new(mem_store));
     Mutex::new(ctx)
 });
 
@@ -36,20 +44,19 @@ pub async fn load_csv(file_name: String, df_name: String) -> Result<(), JsError>
     let csv_file = get_from_promise::<File>(file_handle.get_file()).await?;
     let csv_text: String = get_from_promise::<JsString>(csv_file.text()).await?.into();
     let csv_bytes = Bytes::from(csv_text);
-    let mem_store = InMemory::new();
     let payload_csv = PutPayload::from_bytes(csv_bytes);
     // File name and Path for the InMemory store holding this file in memory
     let mut mem_name = file_name.to_owned();
     mem_name.push_str(".csv");
     let path = Path::from(mem_name.clone().as_str());
-    mem_store.put(&path, payload_csv).await?;
-    let mem_url = Url::parse("mem://").unwrap();
     // Path for datafusion where file is stored in InMemory store
     let mut register_path = "mem:///".to_owned();
     register_path.push_str(&mem_name.as_str());
     {
         let ctx = CTX.lock().unwrap();
-        ctx.register_object_store(&mem_url, Arc::new(mem_store));
+        let mem_store = ctx.runtime_env().object_store(mem_url()).unwrap();
+        mem_store.put(&path, payload_csv).await?;
+
         // register the temporary CSV table
         ctx.register_csv(
             &df_name.as_str(),
