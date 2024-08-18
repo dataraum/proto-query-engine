@@ -18,10 +18,12 @@ pub async fn get_file_folder() -> Result<FileSystemDirectoryHandle, JsError> {
     let navigator = window.navigator();
     let storage = navigator.storage();
     let root = get_from_promise::<FileSystemDirectoryHandle>(storage.get_directory()).await?;
+    let options = &FileSystemGetDirectoryOptions::new();
+    options.set_create(true);
     let import_handle =
         get_from_promise::<FileSystemDirectoryHandle>(root.get_directory_handle_with_options(
             "fileImport",
-            &FileSystemGetDirectoryOptions::new().create(true),
+            options,
         ))
         .await?;
     return Ok(import_handle);
