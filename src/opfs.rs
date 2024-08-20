@@ -3,21 +3,51 @@ use bytes::Bytes;
 use chrono::{DateTime, Utc};
 use datafusion::arrow::datatypes::ArrowNativeType;
 use futures::stream::{BoxStream, StreamExt};
+use futures::FutureExt;
 use js_sys::JsString;
+use object_store::GetRange;
 use object_store::{
     path::Path, Attributes, Error, GetOptions, GetResult, GetResultPayload, ListResult,
     MultipartUpload, ObjectMeta, ObjectStore, PutMultipartOpts, PutOptions, PutPayload, PutResult,
     Result,
 };
+use snafu::{ResultExt, Snafu};
 use std::sync::mpsc::{self, Receiver, Sender};
 use tokio::sync::oneshot;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::{prelude::Closure, JsValue};
+use wasm_bindgen_futures::JsFuture;
 use web_sys::{
-    File, FileSystemDirectoryHandle, FileSystemFileHandle, FileSystemGetFileOptions
+    console, File, FileSystemDirectoryHandle, FileSystemFileHandle, FileSystemGetFileOptions,
 };
 
 use crate::utils::{get_file_folder, get_from_promise};
+
+#[derive(Debug, Snafu)]
+pub(crate) enum InvalidGetRange {
+    #[snafu(display(
+        "Wanted range starting at {requested}, but object was only {length} bytes long"
+    ))]
+    StartTooLarge { requested: usize, length: usize },
+}
+
+#[derive(Debug, Snafu)]
+#[allow(missing_docs)]
+enum OpfsError {
+    #[snafu(display("Invalid range: {source}"))]
+    Range { source: InvalidGetRange },
+}
+
+impl From<OpfsError> for object_store::Error {
+    fn from(source: OpfsError) -> Self {
+        match source {
+            _ => Error::Generic {
+                store: "InMemory",
+                source: Box::new(source),
+            },
+        }
+    }
+}
 
 impl std::fmt::Display for OpfsFileSystem {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -30,12 +60,7 @@ pub struct OpfsFileSystem {}
 
 #[async_trait]
 impl ObjectStore for OpfsFileSystem {
-    async fn put_opts(
-        &self,
-        location: &Path,
-        payload: PutPayload,
-        opts: PutOptions,
-    ) -> Result<PutResult> {
+    async fn put_opts(&self, _: &Path, _: PutPayload, _: PutOptions) -> Result<PutResult> {
         return Err(Error::Generic {
             store: "put_opts",
             source: Box::new(Error::NotImplemented),
@@ -44,8 +69,8 @@ impl ObjectStore for OpfsFileSystem {
 
     async fn put_multipart_opts(
         &self,
-        location: &Path,
-        opts: PutMultipartOpts,
+        _: &Path,
+        _: PutMultipartOpts,
     ) -> Result<Box<dyn MultipartUpload>> {
         return Err(Error::Generic {
             store: "put_multipart_opts",
@@ -54,58 +79,90 @@ impl ObjectStore for OpfsFileSystem {
     }
 
     async fn get_opts(&self, location: &Path, options: GetOptions) -> Result<GetResult> {
-        web_sys::console::log_1(&"Hello, world!".into());
-        let loc_str = location.to_string();
+        //let location_string = Box::new(location.to_string());
         #[derive(Debug)]
         struct FileResponse {
             size: usize,
             bytes: Bytes,
             last_modified: DateTime<Utc>,
         }
-        
-        let (tx, rx) = oneshot::channel::<FileResponse>();
 
-        wasm_bindgen_futures::spawn_local(async move {
-            let f_name: &str = &loc_str.as_str();
-            let import_handle = get_file_folder().await.unwrap();
-            let file_handle =
-                get_from_promise::<FileSystemFileHandle>(import_handle.get_file_handle(f_name))
-                    .await.unwrap();
-            let csv_file = get_from_promise::<File>(file_handle.get_file()).await.unwrap();
-            let csv_text: String = get_from_promise::<JsString>(csv_file.text()).await.unwrap().into();
-            let milliseconds_since: i64 = csv_file.last_modified() as i64;
-            let time = DateTime::from_timestamp_millis(milliseconds_since).unwrap();
-            let resp = FileResponse{
-                size: csv_file.size().as_usize(),
-                bytes: Bytes::from(csv_text),
-                last_modified: time,
-            };
-            tx.send(resp).unwrap();
+        let (tx, rx) = oneshot::channel::<Box<FileResponse>>();
+
+        wasm_bindgen_futures::spawn_local({
+            let f_name: &'static str = "12test2";
+            async move {
+                let import_handle = get_file_folder().await.unwrap();
+                let file_handle =
+                    get_from_promise::<FileSystemFileHandle>(import_handle.get_file_handle(f_name))
+                        .await
+                        .unwrap();
+                let csv_file = get_from_promise::<File>(file_handle.get_file())
+                    .await
+                    .unwrap();
+                let csv_text: String = get_from_promise::<JsString>(csv_file.text())
+                    .await
+                    .unwrap()
+                    .into();
+                let milliseconds_since: i64 = csv_file.last_modified() as i64;
+                let time = DateTime::from_timestamp_millis(milliseconds_since).unwrap();
+                let resp = Box::new(FileResponse {
+                    size: csv_file.size().as_usize(),
+                    bytes: Bytes::from(csv_text),
+                    last_modified: time,
+                });
+                tx.send(resp).unwrap();
+            }
         });
-        
+
         let response = rx.await.unwrap();
 
         let meta: ObjectMeta = ObjectMeta {
             location: location.to_owned(),
-            last_modified: response.last_modified, 
+            last_modified: response.last_modified,
             size: response.size,
             e_tag: Some(response.size.to_string()),
             version: None,
         };
-        web_sys::console::log_1(&JsValue::from_str(&meta.size.to_string()));
-        let log_str = String::from_utf8(response.bytes.clone().to_vec());
-        web_sys::console::log_1(&JsValue::from(&log_str.unwrap()));
 
-        // let (range , data) = match options.range {
-        //     Some(range) => {
-        //         let r = range.as_range(response.bytes.len()).context(RangeSnafu)?;
-        //         (r.clone(), response.bytes.slice(r))
-        //     }
-        //     None => (0..response.bytes.len(), response.bytes),
-        // };
-        let range = std::ops::Range { start: 0, end: response.bytes.len() };
+        let (range, data) = match options.range {
+            Some(range) => {
+                // let r = range.as_range(response.bytes.len()).context(RangeSnafu)?;
+                // (r.clone(), response.bytes.slice(r));
+                let len = response.bytes.len();
+                let r = (match range {
+                    GetRange::Bounded(r) => {
+                        if r.start >= len {
+                            Err(InvalidGetRange::StartTooLarge {
+                                requested: r.start,
+                                length: len,
+                            })
+                        } else if r.end > len {
+                            Ok(r.start..len)
+                        } else {
+                            Ok(r.clone())
+                        }
+                    }
+                    GetRange::Offset(o) => {
+                        if o >= len {
+                            Err(InvalidGetRange::StartTooLarge {
+                                requested: o,
+                                length: len,
+                            })
+                        } else {
+                            Ok(o..len)
+                        }
+                    }
+                    GetRange::Suffix(n) => Ok(len.saturating_sub(n)..len),
+                })
+                .context(RangeSnafu)?;
+                (r.clone(), response.bytes.slice(r))
+            }
+            None => (0..response.bytes.len(), response.bytes),
+        };
+        //let range = std::ops::Range { start: 0, end: response.bytes.len() };
 
-        let stream = futures::stream::once(futures::future::ready(Ok(response.bytes)));
+        let stream = futures::stream::once(futures::future::ready(Ok(data)));
         Ok(GetResult {
             payload: GetResultPayload::Stream(stream.boxed()),
             attributes: Attributes::default(),
@@ -113,7 +170,7 @@ impl ObjectStore for OpfsFileSystem {
             range,
         })
     }
-    async fn delete(&self, location: &Path) -> Result<()> {
+    async fn delete(&self, _: &Path) -> Result<()> {
         return Err(Error::Generic {
             store: "delete",
             source: Box::new(Error::NotImplemented),
@@ -126,7 +183,7 @@ impl ObjectStore for OpfsFileSystem {
             Closure::once(move |val: JsValue| {
                 if val.has_type::<FileSystemDirectoryHandle>() {
                     let file_sync_handle = val.unchecked_into::<FileSystemDirectoryHandle>();
-                    let mut nxt_file = file_sync_handle.values().next();
+                    let nxt_file = file_sync_handle.values().next();
                     //while nxt_file.is_ok() {
                     let closure_b: Closure<dyn FnMut(JsValue) + 'static> =
                         Closure::once(move |val: JsValue| {
@@ -170,19 +227,19 @@ impl ObjectStore for OpfsFileSystem {
         return futures::stream::iter(s).boxed();
     }
 
-    async fn list_with_delimiter(&self, prefix: Option<&Path>) -> Result<ListResult> {
+    async fn list_with_delimiter(&self, _: Option<&Path>) -> Result<ListResult> {
         return Err(Error::Generic {
             store: "list_with_delimiter",
             source: Box::new(Error::NotImplemented),
         });
     }
-    async fn copy(&self, from: &Path, to: &Path) -> Result<()> {
+    async fn copy(&self, _: &Path, _: &Path) -> Result<()> {
         return Err(Error::Generic {
             store: "copy",
             source: Box::new(Error::NotImplemented),
         });
     }
-    async fn copy_if_not_exists(&self, from: &Path, to: &Path) -> Result<()> {
+    async fn copy_if_not_exists(&self, _: &Path, _: &Path) -> Result<()> {
         return Err(Error::Generic {
             store: "copy_if_not_exists",
             source: Box::new(Error::NotImplemented),
@@ -197,16 +254,13 @@ impl OpfsFileSystem {
     }
 
     fn root_handler(closure_b: Closure<dyn FnMut(JsValue) + 'static>) {
-        web_sys::console::log_1(&"helllo 1331".into());
         let window = web_sys::window().unwrap();
         let navigator = window.navigator();
         let storage = navigator.storage();
         let root = storage.get_directory();
-        web_sys::console::log_1(&"helllo 123121".into());
 
         let closure_a: Closure<dyn FnMut(JsValue) + 'static> =
             Closure::once(move |val: JsValue| {
-                web_sys::console::log_1(&"helllo 123121".into());
                 if val.has_type::<FileSystemDirectoryHandle>() {
                     let import_handle = val.unchecked_into::<FileSystemDirectoryHandle>();
                     let fs_options = &FileSystemGetFileOptions::new();
