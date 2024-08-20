@@ -18,9 +18,11 @@ wasm_bindgen_test_configure!(run_in_browser);
 
 async fn set_up() -> Result<(), JsError> {
     let import_handle = get_file_folder().await?;
+    let options = FileSystemGetFileOptions::new();
+    options.set_create(true);
     let import_file = get_from_promise::<FileSystemFileHandle>(
         import_handle
-            .get_file_handle_with_options("12test2", FileSystemGetFileOptions::new().create(true)),
+            .get_file_handle_with_options("12test2", &options),
     )
     .await?;
     let writable =
@@ -54,7 +56,7 @@ async fn pass() {
     datafusion::assert_batches_eq!(
         vec![
             "+---+-------------+",
-            "| a | MIN(test.b) |",
+            "| a | min(test.b) |",
             "+---+-------------+",
             "| 1 | 2           |",
             "+---+-------------+",
