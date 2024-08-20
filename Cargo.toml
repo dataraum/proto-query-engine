@@ -23,11 +23,15 @@ web-sys = { version = "^0.3.70", features = [
     "FileSystemGetDirectoryOptions",
     "FileSystemGetFileOptions",
     "FileSystemWritableFileStream",
+    "FileSystemSyncAccessHandle",
     "Navigator",
     "ReadableStream",
     "StorageManager",
     "Window",
 ] }
+async-trait = "^0.1.81"
+snafu = { version = "^0.8.4", default-features = false, features = ["std"] }
+futures = "^0.3.30"
 wasm-bindgen = "^0.2.92"
 wasm-bindgen-futures = "^0.4.42"
 url = "^2.5"

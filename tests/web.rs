@@ -17,14 +17,20 @@ use web_sys::{FileSystemFileHandle, FileSystemGetFileOptions, FileSystemWritable
 wasm_bindgen_test_configure!(run_in_browser);
 
 async fn set_up() -> Result<(), JsError> {
-    let import_handle = get_file_folder().await?;
+    let import_handle = get_file_folder().await.unwrap();
+
+    web_sys::console::log_1(&import_handle.name().into());
+    let options = &FileSystemGetFileOptions::new();
+    options.set_create(true);
     let import_file = get_from_promise::<FileSystemFileHandle>(
         import_handle
-            .get_file_handle_with_options("12test2", FileSystemGetFileOptions::new().create(true)),
+            .get_file_handle_with_options("12test2", options)
     )
-    .await?;
+    .await.unwrap();
+
+    web_sys::console::log_1(&import_file.name().into());
     let writable =
-        get_from_promise::<FileSystemWritableFileStream>(import_file.create_writable()).await?;
+        get_from_promise::<FileSystemWritableFileStream>(import_file.create_writable()).await.unwrap();
     let _ = writable.write_with_str("a,b,c\n1,2,3").unwrap();
     let _ = writable.close();
     Ok(())
@@ -32,10 +38,13 @@ async fn set_up() -> Result<(), JsError> {
 
 #[wasm_bindgen_test]
 async fn pass() {
+    console_log!("atat");
     let _set_up = set_up().await;
+     console_log!("atat");
     let _add_result = load_csv("12test2".to_string(), "test".to_string()).await;
     let result =
         run_sql("SELECT a, MIN(b) FROM test WHERE a <= b GROUP BY a LIMIT 100".to_string()).await;
+    console_log!("atat22");
 
     let js_value = JsValue::from(result.clone().err());
     let ok_value = JsValue::from(result.ok().unwrap());
