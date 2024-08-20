@@ -6,19 +6,19 @@ use futures::{
     executor,
     stream::{BoxStream, StreamExt},
 };
-use js_sys::{ArrayBuffer, Uint8Array};
+use js_sys::{ArrayBuffer, JsString, Uint8Array};
 use object_store::{
     path::Path, Attributes, Error, GetOptions, GetResult, GetResultPayload, ListResult,
     MultipartUpload, ObjectMeta, ObjectStore, PutMultipartOpts, PutOptions, PutPayload, PutResult,
     Result,
 };
-use wasm_bindgen_futures::JsFuture;
 use std::{
     any::Any,
     ops::Range,
     sync::mpsc::{self, Receiver, Sender},
 };
 use tokio::sync::{mpsc as t_mpsc, oneshot};
+use wasm_bindgen_futures::JsFuture;
 //use futures::channel::oneshot;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::{prelude::Closure, JsValue};
@@ -89,35 +89,53 @@ impl ObjectStore for OpfsFileSystem {
     async fn get_opts(&self, location: &Path, options: GetOptions) -> Result<GetResult> {
         web_sys::console::log_1(&"Hello, world!".into());
         let loc_str = location.to_string();
-        //let mut file_opt: Option<File> = None;
-        //let mut file_sync_opt: Option<FileSystemSyncAccessHandle> = None;
-        //let jsb = JsBridgeImpl {};
-        //let import_handle = jsb.get_file_folder().await.unwrap();
-        let (tx, rx) = oneshot::channel::<Vec<u8>>();
+        #[derive(Debug)]
+        struct FileResponse {
+            size: usize,
+            bytes: Bytes,
+            last_modified: DateTime<Utc>,
+        }
+        
+        let (tx, rx) = oneshot::channel::<FileResponse>();
 
         web_sys::console::log_1(&"loc_str".into());
         //Self::get_file_bytes(tx, loc_str);
-        Self::get_files(tx, loc_str);
-        let buffer = rx.await;
-        if buffer.is_err() {
-            let err = buffer.clone().err().unwrap();
-            web_sys::console::error_1(&JsValue::from_str(&err.to_string()));
-        }
-        let buff_bytes = Bytes::from(buffer.unwrap());
-        /////SEND!!!!
-        let meta = ObjectMeta {
+        wasm_bindgen_futures::spawn_local(async move {
+            let f_name: &str = &loc_str.as_str();
+            let import_handle = get_file_folder().await.unwrap();
+            let file_handle =
+                get_from_promise::<FileSystemFileHandle>(import_handle.get_file_handle(f_name))
+                    .await.unwrap();
+            let csv_file = get_from_promise::<File>(file_handle.get_file()).await.unwrap();
+            let csv_text: String = get_from_promise::<JsString>(csv_file.text()).await.unwrap().into();
+            let milliseconds_since: i64 = csv_file.last_modified() as i64;
+            let time = DateTime::from_timestamp_millis(milliseconds_since).unwrap();
+            let resp = FileResponse{
+                size: csv_file.size().as_usize(),
+                bytes: Bytes::from(csv_text),
+                last_modified: time,
+            };
+            tx.send(resp).unwrap();
+        });
+        
+        let response = rx.await.unwrap();
+
+        let meta: ObjectMeta = ObjectMeta {
             location: location.to_owned(),
-            last_modified: Utc::now(), //time_modified.unwrap(),
-            size: buff_bytes.len(),
+            last_modified: response.last_modified, 
+            size: response.size,
             e_tag: None,
             version: None,
         };
+        web_sys::console::log_1(&JsValue::from_str(&meta.size.to_string()));
+        let log_str = String::from_utf8(response.bytes.clone().to_vec());
+        web_sys::console::log_1(&JsValue::from(&log_str.unwrap()));
         let range = Range {
             start: 0,
             end: meta.size,
         };
 
-        let stream = futures::stream::once(futures::future::ready(Ok(buff_bytes)));
+        let stream = futures::stream::once(futures::future::ready(Ok(response.bytes)));
         Ok(GetResult {
             payload: GetResultPayload::Stream(stream.boxed()),
             attributes: Attributes::default(),
@@ -229,100 +247,5 @@ impl OpfsFileSystem {
                 }
             });
         let _ = root.then(&closure_a);
-    }
-    fn get_files(tx: tokio::sync::oneshot::Sender<Vec<u8>>, loc_str: String) {
-        wasm_bindgen_futures::spawn_local( async move {
-            let f_name: &str = &loc_str.as_str();
-            let import_handle = get_file_folder().await.unwrap();
-            web_sys::console::log_1(&import_handle.name().into());
-            web_sys::console::log_1(&import_handle.to_string().into());
-            // while key.is_ok() {
-            //     let value = JsFuture::from(key.unwrap()).await.unwrap();
-            //     web_sys::console::log_1(&value.as_string().into());
-            //     key = key.next();
-            // }
-
-            web_sys::console::log_1(&f_name.into());
-            let file_handle =
-                get_from_promise::<FileSystemFileHandle>(import_handle.get_file_handle(f_name))
-                    .await
-                    .unwrap();
-            web_sys::console::log_1(&file_handle.name().into());
-            web_sys::console::log_1(&"helllo 22".into());
-            let handle = file_handle.create_sync_access_handle();
-            let file = get_from_promise::<File>(
-                file_handle.get_file(),
-            )
-            .await
-            .unwrap();
-        
-            web_sys::console::log_1(&"helllo 33".into());
-            web_sys::console::log_1(&file.size().into());
-            web_sys::console::log_1(&file.array_buffer().to_string().into());
-            if file.size() > 0.0 {
-                let arr_buff_pr = file.array_buffer();
-                web_sys::console::log_1(&"helllo 55".into());
-                let arr_buff = JsFuture::from(arr_buff_pr).await.unwrap();
-                web_sys::console::log_1(&"helllo 66".into());
-                assert!(arr_buff.is_instance_of::<ArrayBuffer>());
-                web_sys::console::log_1(&"helllo 44".into());
-                let typebuf: js_sys::Uint8Array = Uint8Array::new(&arr_buff);
-                let mut buffer = vec![0; typebuf.length() as usize];
-                typebuf.copy_to(&mut buffer[..]);
-
-                web_sys::console::log_1(&"helllo 99".into());
-                let _ = tx.send(buffer);
-            }
-
-            //let arr_buff = get_from_promise::<ArrayBuffer>(file.array_buffer()).await.unwrap();
-            
-        });
-    }
-    fn get_file_bytes(tx: tokio::sync::oneshot::Sender<Vec<u8>>, loc_str: String) {
-        web_sys::console::log_1(&"helllo again".into());
-        let closure_a: Closure<dyn FnMut(JsValue) + 'static> =
-            Closure::once(move |val: JsValue| {
-                web_sys::console::log_1(&"helllo 22".into());
-                if val.has_type::<FileSystemDirectoryHandle>() {
-                    let import_handle = val.unchecked_into::<FileSystemDirectoryHandle>();
-                    let fs_options = &FileSystemGetFileOptions::new();
-                    fs_options.set_create(false);
-                    let import_file_handle =
-                        import_handle.get_file_handle_with_options(&loc_str, fs_options);
-                    let closure_b: Closure<dyn FnMut(JsValue) + 'static> =
-                        Closure::once(move |val: JsValue| {
-                            web_sys::console::log_1(&"helllo 444".into());
-                            if val.has_type::<FileSystemFileHandle>() {
-                                let import_file_handle =
-                                    val.unchecked_into::<FileSystemFileHandle>();
-                                let file_sync_handle =
-                                    import_file_handle.create_sync_access_handle();
-                                let closure_c: Closure<dyn FnMut(JsValue) + 'static> =
-                                    Closure::once(move |val: JsValue| {
-                                        web_sys::console::log_1(&"helllo 454".into());
-                                        if val.has_type::<FileSystemSyncAccessHandle>() {
-                                            let file_sync_handle =
-                                                val.unchecked_into::<FileSystemSyncAccessHandle>();
-                                            let mut buffer: Vec<u8> =
-                                                vec![
-                                                    0;
-                                                    file_sync_handle.get_size().unwrap().as_usize()
-                                                ];
-                                            let _ =
-                                                file_sync_handle.read_with_u8_array(&mut buffer);
-
-                                            web_sys::console::log_1(&"helllo 99".into());
-                                            let _ = tx.send(buffer);
-                                        }
-                                    });
-
-                                let _ = file_sync_handle.then(&closure_c);
-                            }
-                        });
-                    let _ = import_file_handle.then(&closure_b);
-                }
-            });
-        web_sys::console::log_1(&"helllo 11".into());
-        let _ = Self::root_handler(closure_a);
     }
 }
