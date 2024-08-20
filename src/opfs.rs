@@ -2,55 +2,22 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use chrono::{DateTime, Utc};
 use datafusion::arrow::datatypes::ArrowNativeType;
-use futures::{
-    executor,
-    stream::{BoxStream, StreamExt},
-};
-use js_sys::{ArrayBuffer, JsString, Uint8Array};
+use futures::stream::{BoxStream, StreamExt};
+use js_sys::JsString;
 use object_store::{
     path::Path, Attributes, Error, GetOptions, GetResult, GetResultPayload, ListResult,
     MultipartUpload, ObjectMeta, ObjectStore, PutMultipartOpts, PutOptions, PutPayload, PutResult,
     Result,
 };
-use std::{
-    any::Any,
-    ops::Range,
-    sync::mpsc::{self, Receiver, Sender},
-};
-use tokio::sync::{mpsc as t_mpsc, oneshot};
-use wasm_bindgen_futures::JsFuture;
-//use futures::channel::oneshot;
+use std::sync::mpsc::{self, Receiver, Sender};
+use tokio::sync::oneshot;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::{prelude::Closure, JsValue};
 use web_sys::{
-    File, FileSystemDirectoryHandle, FileSystemFileHandle, FileSystemGetFileOptions,
-    FileSystemSyncAccessHandle,
+    File, FileSystemDirectoryHandle, FileSystemFileHandle, FileSystemGetFileOptions
 };
 
 use crate::utils::{get_file_folder, get_from_promise};
-//use snafu::Snafu;
-
-// /// A specialized `Error` for filesystem object store-related errors
-// #[derive(Debug, Snafu)]
-// #[allow(missing_docs)]
-// pub(crate) enum Error {
-//     #[snafu(display("Unable to open file {}: {}", path.display(), source))]
-//     UnableToOpenFile {
-//         source: io::Error,
-//         path: PathBuf,
-//     },
-// }
-
-// impl From<Error> for object_store::Error {
-//     fn from(source: Error) -> Self {
-//         match source {
-//             _ => Self::Generic {
-//                 store: "OpfsFileSystem",
-//                 source: Box::new(source),
-//             },
-//         }
-//     }
-// }
 
 impl std::fmt::Display for OpfsFileSystem {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -98,8 +65,6 @@ impl ObjectStore for OpfsFileSystem {
         
         let (tx, rx) = oneshot::channel::<FileResponse>();
 
-        web_sys::console::log_1(&"loc_str".into());
-        //Self::get_file_bytes(tx, loc_str);
         wasm_bindgen_futures::spawn_local(async move {
             let f_name: &str = &loc_str.as_str();
             let import_handle = get_file_folder().await.unwrap();
@@ -124,16 +89,21 @@ impl ObjectStore for OpfsFileSystem {
             location: location.to_owned(),
             last_modified: response.last_modified, 
             size: response.size,
-            e_tag: None,
+            e_tag: Some(response.size.to_string()),
             version: None,
         };
         web_sys::console::log_1(&JsValue::from_str(&meta.size.to_string()));
         let log_str = String::from_utf8(response.bytes.clone().to_vec());
         web_sys::console::log_1(&JsValue::from(&log_str.unwrap()));
-        let range = Range {
-            start: 0,
-            end: meta.size,
-        };
+
+        // let (range , data) = match options.range {
+        //     Some(range) => {
+        //         let r = range.as_range(response.bytes.len()).context(RangeSnafu)?;
+        //         (r.clone(), response.bytes.slice(r))
+        //     }
+        //     None => (0..response.bytes.len(), response.bytes),
+        // };
+        let range = std::ops::Range { start: 0, end: response.bytes.len() };
 
         let stream = futures::stream::once(futures::future::ready(Ok(response.bytes)));
         Ok(GetResult {

@@ -23,7 +23,6 @@ web-sys = { version = "^0.3.70", features = [
     "FileSystemGetDirectoryOptions",
     "FileSystemGetFileOptions",
     "FileSystemWritableFileStream",
-    "FileSystemSyncAccessHandle",
     "Navigator",
     "ReadableStream",
     "StorageManager",
