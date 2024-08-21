@@ -1,11 +1,9 @@
 use async_trait::async_trait;
 use bytes::Bytes;
-use chrono::{DateTime, Utc};
+use chrono::DateTime;
 use datafusion::arrow::datatypes::ArrowNativeType;
 use futures::stream::{BoxStream, StreamExt};
-use futures::FutureExt;
-use js_sys::JsString;
-use object_store::GetRange;
+use object_store::{collect_bytes, GetRange};
 use object_store::{
     path::Path, Attributes, Error, GetOptions, GetResult, GetResultPayload, ListResult,
     MultipartUpload, ObjectMeta, ObjectStore, PutMultipartOpts, PutOptions, PutPayload, PutResult,
@@ -16,12 +14,11 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use tokio::sync::oneshot;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::{prelude::Closure, JsValue};
-use wasm_bindgen_futures::JsFuture;
 use web_sys::{
     console, File, FileSystemDirectoryHandle, FileSystemFileHandle, FileSystemGetFileOptions,
 };
 
-use crate::utils::{get_file_folder, get_from_promise};
+use crate::utils::{get_file_data, FileResponse};
 
 #[derive(Debug, Snafu)]
 pub(crate) enum InvalidGetRange {
@@ -32,7 +29,6 @@ pub(crate) enum InvalidGetRange {
 }
 
 #[derive(Debug, Snafu)]
-#[allow(missing_docs)]
 enum OpfsError {
     #[snafu(display("Invalid range: {source}"))]
     Range { source: InvalidGetRange },
@@ -54,17 +50,15 @@ impl std::fmt::Display for OpfsFileSystem {
         write!(f, "OpfsFileSystem()")
     }
 }
-
 #[derive(Debug, Default)]
-pub struct OpfsFileSystem {}
+pub struct OpfsFileSystem {
+    //window: &'static Window
+}
 
 #[async_trait]
 impl ObjectStore for OpfsFileSystem {
     async fn put_opts(&self, _: &Path, _: PutPayload, _: PutOptions) -> Result<PutResult> {
-        return Err(Error::Generic {
-            store: "put_opts",
-            source: Box::new(Error::NotImplemented),
-        });
+        Err(Error::NotImplemented)
     }
 
     async fn put_multipart_opts(
@@ -72,48 +66,18 @@ impl ObjectStore for OpfsFileSystem {
         _: &Path,
         _: PutMultipartOpts,
     ) -> Result<Box<dyn MultipartUpload>> {
-        return Err(Error::Generic {
+        Err(Error::Generic {
             store: "put_multipart_opts",
             source: Box::new(Error::NotImplemented),
-        });
+        })
     }
 
     async fn get_opts(&self, location: &Path, options: GetOptions) -> Result<GetResult> {
-        //let location_string = Box::new(location.to_string());
-        #[derive(Debug)]
-        struct FileResponse {
-            size: usize,
-            bytes: Bytes,
-            last_modified: DateTime<Utc>,
-        }
+        let loc_string = location.to_string();
 
         let (tx, rx) = oneshot::channel::<Box<FileResponse>>();
 
-        wasm_bindgen_futures::spawn_local({
-            let f_name: &'static str = "12test2";
-            async move {
-                let import_handle = get_file_folder().await.unwrap();
-                let file_handle =
-                    get_from_promise::<FileSystemFileHandle>(import_handle.get_file_handle(f_name))
-                        .await
-                        .unwrap();
-                let csv_file = get_from_promise::<File>(file_handle.get_file())
-                    .await
-                    .unwrap();
-                let csv_text: String = get_from_promise::<JsString>(csv_file.text())
-                    .await
-                    .unwrap()
-                    .into();
-                let milliseconds_since: i64 = csv_file.last_modified() as i64;
-                let time = DateTime::from_timestamp_millis(milliseconds_since).unwrap();
-                let resp = Box::new(FileResponse {
-                    size: csv_file.size().as_usize(),
-                    bytes: Bytes::from(csv_text),
-                    last_modified: time,
-                });
-                tx.send(resp).unwrap();
-            }
-        });
+        get_file_data(tx, loc_string);
 
         let response = rx.await.unwrap();
 
@@ -121,14 +85,14 @@ impl ObjectStore for OpfsFileSystem {
             location: location.to_owned(),
             last_modified: response.last_modified,
             size: response.size,
-            e_tag: Some(response.size.to_string()),
+            e_tag: Some(response.name),
             version: None,
         };
 
+        //console::log_1(&JsValue::from_str(String::from_utf8(Vec::<u8>::from(response.bytes.clone())).unwrap().as_str()));
+
         let (range, data) = match options.range {
             Some(range) => {
-                // let r = range.as_range(response.bytes.len()).context(RangeSnafu)?;
-                // (r.clone(), response.bytes.slice(r));
                 let len = response.bytes.len();
                 let r = (match range {
                     GetRange::Bounded(r) => {
@@ -160,9 +124,9 @@ impl ObjectStore for OpfsFileSystem {
             }
             None => (0..response.bytes.len(), response.bytes),
         };
-        //let range = std::ops::Range { start: 0, end: response.bytes.len() };
-
         let stream = futures::stream::once(futures::future::ready(Ok(data)));
+        // let byty = resulty.bytes().await.unwrap();
+        // console::log_1(&JsValue::from_str(String::from_utf8(Vec::<u8>::from(byty)).unwrap().as_str()));
         Ok(GetResult {
             payload: GetResultPayload::Stream(stream.boxed()),
             attributes: Attributes::default(),
@@ -249,7 +213,8 @@ impl ObjectStore for OpfsFileSystem {
 
 impl OpfsFileSystem {
     /// Create new filesystem storage with no prefix
-    pub fn new() -> Self {
+    pub fn new() -> OpfsFileSystem {
+        //window = window
         Self::default()
     }
 

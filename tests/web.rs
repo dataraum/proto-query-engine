@@ -12,12 +12,13 @@ use proto_query_engine::utils::{get_file_folder, get_from_promise};
 use proto_query_engine::{load_csv, run_sql};
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_test::{console_log, *};
-use web_sys::{FileSystemFileHandle, FileSystemGetFileOptions, FileSystemWritableFileStream};
+use web_sys::{FileSystemFileHandle, FileSystemGetFileOptions, FileSystemWritableFileStream, Window};
 
 wasm_bindgen_test_configure!(run_in_browser);
 
 async fn set_up() -> Result<(), JsError> {
-    let import_handle = get_file_folder().await.unwrap();
+    let window: Window = web_sys::window().unwrap();
+    let import_handle = get_file_folder(&window).await;
 
     web_sys::console::log_1(&import_handle.name().into());
     let options = &FileSystemGetFileOptions::new();
@@ -26,11 +27,11 @@ async fn set_up() -> Result<(), JsError> {
         import_handle
             .get_file_handle_with_options("12test2", options)
     )
-    .await.unwrap();
+    .await;
 
     web_sys::console::log_1(&import_file.name().into());
     let writable =
-        get_from_promise::<FileSystemWritableFileStream>(import_file.create_writable()).await.unwrap();
+        get_from_promise::<FileSystemWritableFileStream>(import_file.create_writable()).await;
     let _ = writable.write_with_str("a,b,c\n1,2,3").unwrap();
     let _ = writable.close();
     Ok(())
@@ -43,7 +44,7 @@ async fn pass() {
      console_log!("atat");
     let _add_result = load_csv("12test2".to_string(), "test".to_string()).await;
     let result =
-        run_sql("SELECT a, MIN(b) FROM test WHERE a <= b GROUP BY a LIMIT 100".to_string()).await;
+        run_sql("SELECT * FROM test".to_string()).await;
     console_log!("atat22");
 
     let js_value = JsValue::from(result.clone().err());

@@ -23,6 +23,7 @@ fn _opfs_url() -> &'static Box<Url> {
 
 static CTX: Lazy<SessionContext> = Lazy::new(|| {
     let ctx = SessionContext::new();
+    //let window: &'static Window = &web_sys::window().unwrap();
     let opfs_store: OpfsFileSystem = OpfsFileSystem::new();
     ctx.register_object_store(_opfs_url().as_ref(), Arc::new(opfs_store));
     ctx
@@ -46,25 +47,18 @@ pub async fn load_csv(file_name: String, table_name: String) -> Result<(), JsVal
     //https://stackoverflow.com/questions/76566489/convert-csv-to-apache-arrow-in-rust
     let mut register_path = "opfs:///".to_owned();
     register_path.push_str(&file_name.as_str());
-    //let ctx = &CTX;
-    //let table_ref = TableReference::from(table_name.clone());
-    // if !ctx.table_exist(table_ref).unwrap() {
-    //     // register the temporary CSV table
-    //     ctx.register_csv(
-    //         &table_name.as_str(),
-    //         register_path.as_str(),
-    //         CsvReadOptions::new(),
-    //     )
-    //     .await
-    //     .unwrap();
-    // }
-    CTX.register_csv(
-        &table_name.as_str(),
-        register_path.as_str(),
-        CsvReadOptions::new(),
-    )
-    .await
-    .unwrap();
+    let ctx = &CTX;
+    let table_ref = TableReference::from(table_name.clone());
+    if !ctx.table_exist(table_ref).unwrap() {
+        // register the temporary CSV table
+        ctx.register_csv(
+            &table_name.as_str(),
+            register_path.as_str(),
+            CsvReadOptions::new(),
+        )
+        .await
+        .unwrap();
+    }
     Ok(())
 }
 
