@@ -1,4 +1,4 @@
-mod opfs;
+mod opfs_store;
 pub mod utils;
 
 use datafusion::arrow::array::RecordBatchWriter;
@@ -10,7 +10,7 @@ use datafusion::prelude::*;
 use datafusion::sql::TableReference;
 use js_sys::Uint8Array;
 use once_cell::sync::Lazy;
-use opfs::OpfsFileSystem;
+use opfs_store::OpfsFileSystem;
 use std::sync::Arc;
 use std::sync::OnceLock;
 use url::Url;
@@ -23,7 +23,6 @@ fn _opfs_url() -> &'static Box<Url> {
 
 static CTX: Lazy<SessionContext> = Lazy::new(|| {
     let ctx = SessionContext::new();
-    //let window: &'static Window = &web_sys::window().unwrap();
     let opfs_store: OpfsFileSystem = OpfsFileSystem::new();
     ctx.register_object_store(_opfs_url().as_ref(), Arc::new(opfs_store));
     ctx
@@ -43,21 +42,21 @@ pub async fn has_table(table_name: String) -> Result<JsValue, JsValue> {
 }
 
 #[wasm_bindgen]
-pub async fn delete_table(table_name: String) -> Result<(), JsError> {
+pub async fn unegister_table(table_name: String) -> Result<(), JsError> {
     let table_ref = TableReference::from(table_name);
-    let _ = CTX.deregister_table(table_ref);
+    CTX.deregister_table(table_ref).unwrap();
     Ok(())
 }
 
 #[wasm_bindgen]
-pub async fn load_csv(file_name: String, table_name: String) -> Result<(), JsValue> {
-    //https://stackoverflow.com/questions/76566489/convert-csv-to-apache-arrow-in-rust
+pub async fn register_csv(file_name: String, table_name: String) -> Result<(), JsValue> {
+    // TODO: convert to ipc during import https://stackoverflow.com/questions/76566489/convert-csv-to-apache-arrow-in-rust
     let mut register_path = "opfs:///".to_owned();
     register_path.push_str(&file_name.as_str());
     let ctx = &CTX;
     let table_ref = TableReference::from(table_name.clone());
     if !ctx.table_exist(table_ref).unwrap() {
-        // register the temporary CSV table
+        // register CSV as table
         ctx.register_csv(
             &table_name.as_str(),
             register_path.as_str(),
@@ -83,7 +82,7 @@ pub async fn run_sql(sql_query: String) -> Result<JsValue, JsValue> {
     for batch in results {
         writer.write(&batch).unwrap();
     }
-    let _ = writer.close();
+    writer.close().unwrap();
     let js_arr = Uint8Array::from(&output[..]);
     Ok(JsValue::from(&js_arr))
 }

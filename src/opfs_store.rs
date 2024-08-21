@@ -1,6 +1,5 @@
 use async_trait::async_trait;
-use chrono::DateTime;
-use datafusion::arrow::datatypes::ArrowNativeType;
+use futures::channel::oneshot;
 use futures::stream::{BoxStream, StreamExt};
 use object_store::GetRange;
 use object_store::{
@@ -9,15 +8,9 @@ use object_store::{
     Result,
 };
 use snafu::{ResultExt, Snafu};
-use std::sync::mpsc::{self, Receiver, Sender};
-use tokio::sync::oneshot;
-use wasm_bindgen::JsCast;
-use wasm_bindgen::{prelude::Closure, JsValue};
-use web_sys::{
-    File, FileSystemDirectoryHandle, FileSystemFileHandle, FileSystemGetFileOptions,
-};
+use std::sync::mpsc;
 
-use crate::utils::{get_file_data, FileResponse};
+use crate::utils::{get_file_data, get_files, FileResponse};
 
 #[derive(Debug, Snafu)]
 pub(crate) enum InvalidGetRange {
@@ -37,7 +30,7 @@ impl From<OpfsError> for object_store::Error {
     fn from(source: OpfsError) -> Self {
         match source {
             _ => Error::Generic {
-                store: "InMemory",
+                store: "OpfsFileSystem",
                 source: Box::new(source),
             },
         }
@@ -50,9 +43,7 @@ impl std::fmt::Display for OpfsFileSystem {
     }
 }
 #[derive(Debug, Default)]
-pub struct OpfsFileSystem {
-    //window: &'static Window
-}
+pub struct OpfsFileSystem {}
 
 #[async_trait]
 impl ObjectStore for OpfsFileSystem {
@@ -149,51 +140,9 @@ impl ObjectStore for OpfsFileSystem {
         });
     }
     fn list(&self, _: Option<&Path>) -> BoxStream<'_, Result<ObjectMeta>> {
-        let (tx, rx): (Sender<ObjectMeta>, Receiver<ObjectMeta>) = mpsc::channel();
+        let (tx, rx) = mpsc::channel::<ObjectMeta>();
 
-        let closure_c: Closure<dyn FnMut(JsValue) + 'static> =
-            Closure::once(move |val: JsValue| {
-                if val.has_type::<FileSystemDirectoryHandle>() {
-                    let file_sync_handle = val.unchecked_into::<FileSystemDirectoryHandle>();
-                    let nxt_file = file_sync_handle.values().next();
-                    //while nxt_file.is_ok() {
-                    let closure_b: Closure<dyn FnMut(JsValue) + 'static> =
-                        Closure::once(move |val: JsValue| {
-                            if val.has_type::<FileSystemFileHandle>() {
-                                let import_file_handle =
-                                    val.unchecked_into::<FileSystemFileHandle>();
-                                let file_handle = import_file_handle.get_file();
-
-                                let closure_c: Closure<dyn FnMut(JsValue) + 'static> =
-                                    Closure::once(move |val: JsValue| {
-                                        if val.has_type::<File>() {
-                                            let file = val.unchecked_into::<File>();
-                                            let mut path_str = "opfs://data/".to_owned();
-                                            path_str.push_str(file.name().as_str());
-                                            let milliseconds_since: i64 =
-                                                file.last_modified() as i64;
-                                            let time =
-                                                DateTime::from_timestamp_millis(milliseconds_since);
-                                            let meta: ObjectMeta = ObjectMeta {
-                                                location: Path::parse(path_str).unwrap(),
-                                                last_modified: time.unwrap(),
-                                                size: file.size().as_usize(),
-                                                e_tag: None,
-                                                version: None,
-                                            };
-                                            let _ = tx.send(meta);
-                                        }
-                                    });
-                                let _ = file_handle.then(&closure_c);
-                            }
-                        });
-                    let _ = nxt_file.unwrap().then(&closure_b);
-                    //nxt_file = file_sync_handle.values().next();
-                    //}
-                }
-            });
-
-        let _ = Self::root_handler(closure_c);
+        get_files(tx);
 
         let s: Vec<_> = rx.into_iter().map(|meta| Ok(meta)).collect();
         return futures::stream::iter(s).boxed();
@@ -222,27 +171,6 @@ impl ObjectStore for OpfsFileSystem {
 impl OpfsFileSystem {
     /// Create new filesystem storage with no prefix
     pub fn new() -> OpfsFileSystem {
-        //window = window
         Self::default()
-    }
-
-    fn root_handler(closure_b: Closure<dyn FnMut(JsValue) + 'static>) {
-        let window = web_sys::window().unwrap();
-        let navigator = window.navigator();
-        let storage = navigator.storage();
-        let root = storage.get_directory();
-
-        let closure_a: Closure<dyn FnMut(JsValue) + 'static> =
-            Closure::once(move |val: JsValue| {
-                if val.has_type::<FileSystemDirectoryHandle>() {
-                    let import_handle = val.unchecked_into::<FileSystemDirectoryHandle>();
-                    let fs_options = &FileSystemGetFileOptions::new();
-                    fs_options.set_create(true);
-                    let import_file_handle =
-                        import_handle.get_file_handle_with_options("data", fs_options);
-                    let _ = import_file_handle.then(&closure_b);
-                }
-            });
-        let _ = root.then(&closure_a);
     }
 }

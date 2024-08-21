@@ -9,7 +9,7 @@ use datafusion::arrow::ipc::reader::StreamReader;
 use datafusion::arrow::record_batch::RecordBatch;
 use js_sys::Uint8Array;
 use proto_query_engine::utils::{get_file_folder, get_from_promise};
-use proto_query_engine::{load_csv, run_sql};
+use proto_query_engine::{register_csv, run_sql};
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_test::{console_log, *};
 use web_sys::{FileSystemFileHandle, FileSystemGetFileOptions, FileSystemWritableFileStream, Window};
@@ -36,7 +36,7 @@ async fn set_up() -> Result<(), JsError> {
 #[wasm_bindgen_test]
 async fn pass() {
     let _set_up = set_up().await;
-    let _add_result = load_csv("12test2.csv".to_string(), "test".to_string()).await;
+    let _add_result = register_csv("12test2.csv".to_string(), "test".to_string()).await;
     let result =
         run_sql("SELECT a, min(b) FROM test WHERE a <= b GROUP BY a LIMIT 100".to_string()).await;
 
