@@ -43,6 +43,13 @@ pub async fn has_table(table_name: String) -> Result<JsValue, JsValue> {
 }
 
 #[wasm_bindgen]
+pub async fn delete_table(table_name: String) -> Result<(), JsError> {
+    let table_ref = TableReference::from(table_name);
+    let _ = CTX.deregister_table(table_ref);
+    Ok(())
+}
+
+#[wasm_bindgen]
 pub async fn load_csv(file_name: String, table_name: String) -> Result<(), JsValue> {
     //https://stackoverflow.com/questions/76566489/convert-csv-to-apache-arrow-in-rust
     let mut register_path = "opfs:///".to_owned();

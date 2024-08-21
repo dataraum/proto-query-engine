@@ -1,5 +1,6 @@
 use bytes::Bytes;
 use chrono::{DateTime, Utc};
+use datafusion::arrow::datatypes::ArrowNativeType;
 use futures::FutureExt;
 use js_sys::{JsString, Promise};
 use tokio::sync::oneshot::Sender;
@@ -11,9 +12,10 @@ use web_sys::{
 
 #[derive(Debug)]
 pub struct FileResponse {
-    pub bytes: Bytes,
+    pub bytes: Option<Bytes>,
     pub name: String,
     pub last_modified: DateTime<Utc>,
+    pub size: usize,
 }
 pub async fn get_file_folder(window: &Window) -> FileSystemDirectoryHandle {
     let navigator = window.navigator();
@@ -48,7 +50,7 @@ pub async fn get_from_promise<T: JsCast>(promise: Promise) -> T {
         .unwrap();
 }
 
-pub fn get_file_data(tx: Sender<FileResponse>, name: String) {
+pub fn get_file_data(tx: Sender<Box<FileResponse>>, name: String, head: bool) {
     wasm_bindgen_futures::spawn_local({
         let f_name = name;
         async move {
@@ -59,15 +61,24 @@ pub fn get_file_data(tx: Sender<FileResponse>, name: String) {
             )
             .await;
             let csv_file = get_from_promise::<File>(file_handle.get_file()).await;
-            let js_string = get_from_promise::<JsString>(csv_file.text()).await;
-            let csv_text: String = js_string.into();
+            let csv_text: Option<String> = if head {
+                None
+            } else {
+                let js_string = get_from_promise::<JsString>(csv_file.text()).await;
+                Some(js_string.into())
+            };
             let milliseconds_since: i64 = csv_file.last_modified() as i64;
             let time = DateTime::from_timestamp_millis(milliseconds_since).unwrap();
-            let resp = FileResponse {
-                bytes: Bytes::from(csv_text),
-                name: csv_file.name().clone(),
+            let resp = Box::new(FileResponse {
+                bytes: if head {
+                    None
+                } else {
+                    Some(Bytes::from(csv_text.unwrap()))
+                },
+                name: csv_file.name(),
                 last_modified: time,
-            };
+                size: csv_file.size().as_usize(),
+            });
             tx.send(resp).unwrap();
         }
     });

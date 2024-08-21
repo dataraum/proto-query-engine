@@ -74,52 +74,42 @@ impl ObjectStore for OpfsFileSystem {
     async fn head(&self, location: &Path) -> Result<ObjectMeta> { 
         console::log_1(&"head".into());
         let loc_string = location.to_string();
-        let (tx, rx) = oneshot::channel::<FileResponse>();
-        get_file_data(tx, loc_string.to_owned());
+        let (tx, rx) = oneshot::channel::<Box<FileResponse>>();
+        get_file_data(tx, loc_string.to_owned(), true);
         let response = rx.await.unwrap();
         Ok(ObjectMeta {
             location: location.clone(),
             last_modified: response.last_modified,
-            size: response.bytes.len(),
+            size: response.size,
             e_tag: Some(response.name),
             version: None,
         })
     }
 
-    // async fn get_ranges(&self, location: &Path, ranges: &[Range<usize>]) -> Result<Vec<Bytes>> {
-    //     console::log_1(&"ranges".into());
-    //     let loc_string = location.to_string();
-    //     let (tx, rx) = oneshot::channel::<FileResponse>();
-    //     get_file_data(tx, loc_string);
-    //     let response = rx.await.unwrap();
-    //     let range = Range{start: 0, end: response.bytes.len()};
-    //     let bbb = [response.bytes.slice(range)];
-    //     Ok(bbb.to_vec())
-    // }
-
     async fn get_opts(&self, location: &Path, options: GetOptions) -> Result<GetResult> {
         console::log_1(&"get".into());
         let loc_string = location.to_string();
 
-        let (tx, rx) = oneshot::channel::<FileResponse>();
+        let (tx, rx) = oneshot::channel::<Box<FileResponse>>();
 
-        get_file_data(tx, loc_string);
+        get_file_data(tx, loc_string, false);
 
         let response = rx.await.unwrap();
 
         let meta: ObjectMeta = ObjectMeta {
             location: location.clone(),
             last_modified: response.last_modified,
-            size: response.bytes.len(),
+            size: response.size,
             e_tag: Some(response.name),
             version: None,
         };
 
         //console::log_1(&JsValue::from_str(String::from_utf8(Vec::<u8>::from(response.bytes.clone())).unwrap().as_str()));
+        let bytes = response.bytes.unwrap();
 
         let (range, data) = match options.range {
             Some(range) => {
-                let len = response.bytes.len();
+                let len = bytes.len();
                 let r = (match range {
                     GetRange::Bounded(r) => {
                         if r.start >= len {
@@ -146,9 +136,9 @@ impl ObjectStore for OpfsFileSystem {
                     GetRange::Suffix(n) => Ok(len.saturating_sub(n)..len),
                 })
                 .context(RangeSnafu)?;
-                (r.clone(), response.bytes.slice(r))
+                (r.clone(), bytes.slice(r))
             }
-            None => (0..response.bytes.len(), response.bytes),
+            None => (0..bytes.len(), bytes),
         };
         let stream = futures::stream::once(futures::future::ready(Ok(data)));
         Ok(GetResult {
