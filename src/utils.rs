@@ -2,7 +2,7 @@ use bytes::Bytes;
 use chrono::{DateTime, Utc};
 use datafusion::arrow::datatypes::ArrowNativeType;
 use futures::FutureExt;
-use js_sys::{JsString, Promise};
+use js_sys::{Promise, Uint8Array};
 use tokio::sync::oneshot::Sender;
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::JsFuture;
@@ -17,6 +17,7 @@ pub struct FileResponse {
     pub last_modified: DateTime<Utc>,
     pub size: usize,
 }
+
 pub async fn get_file_folder(window: &Window) -> FileSystemDirectoryHandle {
     let navigator = window.navigator();
     let storage = navigator.storage();
@@ -28,11 +29,6 @@ pub async fn get_file_folder(window: &Window) -> FileSystemDirectoryHandle {
     )
     .await;
 }
-
-// fn print_type_of<T>(_: &T) {
-//     let typy = std::any::type_name::<T>();
-//     console::log_1(&typy.into());
-// }
 
 pub async fn get_from_promise<T: JsCast>(promise: Promise) -> T {
     return JsFuture::from(promise)
@@ -54,6 +50,7 @@ pub fn get_file_data(tx: Sender<Box<FileResponse>>, name: String, head: bool) {
     wasm_bindgen_futures::spawn_local({
         let f_name = name;
         async move {
+            // moving Window as ref from the static async context to prevent loss of context
             let window: Window = web_sys::window().unwrap();
             let import_handle = get_file_folder(&window).await;
             let file_handle = get_from_promise::<FileSystemFileHandle>(
@@ -61,11 +58,19 @@ pub fn get_file_data(tx: Sender<Box<FileResponse>>, name: String, head: bool) {
             )
             .await;
             let csv_file = get_from_promise::<File>(file_handle.get_file()).await;
-            let csv_text: Option<String> = if head {
+            let csv_bytes: Option<Bytes> = if head {
                 None
             } else {
-                let js_string = get_from_promise::<JsString>(csv_file.text()).await;
-                Some(js_string.into())
+                let bytes = JsFuture::from(csv_file.array_buffer()).map(|value| {
+                    match value {
+                        Ok(value) => {
+                            let u8_arr = Uint8Array::new(&value);
+                            Ok(Bytes::from(u8_arr.to_vec()))
+                        }
+                        Err(e) => Err(e)
+                    }
+                }).await.unwrap();
+                Some(bytes)
             };
             let milliseconds_since: i64 = csv_file.last_modified() as i64;
             let time = DateTime::from_timestamp_millis(milliseconds_since).unwrap();
@@ -73,7 +78,7 @@ pub fn get_file_data(tx: Sender<Box<FileResponse>>, name: String, head: bool) {
                 bytes: if head {
                     None
                 } else {
-                    Some(Bytes::from(csv_text.unwrap()))
+                    Some(csv_bytes.unwrap())
                 },
                 name: csv_file.name(),
                 last_modified: time,

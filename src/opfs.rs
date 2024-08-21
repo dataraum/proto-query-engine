@@ -14,7 +14,7 @@ use tokio::sync::oneshot;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::{prelude::Closure, JsValue};
 use web_sys::{
-    console, File, FileSystemDirectoryHandle, FileSystemFileHandle, FileSystemGetFileOptions,
+    File, FileSystemDirectoryHandle, FileSystemFileHandle, FileSystemGetFileOptions,
 };
 
 use crate::utils::{get_file_data, FileResponse};
@@ -72,7 +72,6 @@ impl ObjectStore for OpfsFileSystem {
     }
 
     async fn head(&self, location: &Path) -> Result<ObjectMeta> { 
-        console::log_1(&"head".into());
         let loc_string = location.to_string();
         let (tx, rx) = oneshot::channel::<Box<FileResponse>>();
         get_file_data(tx, loc_string.to_owned(), true);
@@ -87,13 +86,9 @@ impl ObjectStore for OpfsFileSystem {
     }
 
     async fn get_opts(&self, location: &Path, options: GetOptions) -> Result<GetResult> {
-        console::log_1(&"get".into());
         let loc_string = location.to_string();
-
         let (tx, rx) = oneshot::channel::<Box<FileResponse>>();
-
         get_file_data(tx, loc_string, false);
-
         let response = rx.await.unwrap();
 
         let meta: ObjectMeta = ObjectMeta {
@@ -104,9 +99,8 @@ impl ObjectStore for OpfsFileSystem {
             version: None,
         };
 
-        //console::log_1(&JsValue::from_str(String::from_utf8(Vec::<u8>::from(response.bytes.clone())).unwrap().as_str()));
         let bytes = response.bytes.unwrap();
-
+        // Copied from GetRange
         let (range, data) = match options.range {
             Some(range) => {
                 let len = bytes.len();
