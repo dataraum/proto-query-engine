@@ -1,9 +1,8 @@
 use async_trait::async_trait;
-use bytes::Bytes;
 use chrono::DateTime;
 use datafusion::arrow::datatypes::ArrowNativeType;
 use futures::stream::{BoxStream, StreamExt};
-use object_store::{collect_bytes, GetRange};
+use object_store::GetRange;
 use object_store::{
     path::Path, Attributes, Error, GetOptions, GetResult, GetResultPayload, ListResult,
     MultipartUpload, ObjectMeta, ObjectStore, PutMultipartOpts, PutOptions, PutPayload, PutResult,
@@ -72,19 +71,46 @@ impl ObjectStore for OpfsFileSystem {
         })
     }
 
+    async fn head(&self, location: &Path) -> Result<ObjectMeta> { 
+        console::log_1(&"head".into());
+        let loc_string = location.to_string();
+        let (tx, rx) = oneshot::channel::<FileResponse>();
+        get_file_data(tx, loc_string.to_owned());
+        let response = rx.await.unwrap();
+        Ok(ObjectMeta {
+            location: location.clone(),
+            last_modified: response.last_modified,
+            size: response.bytes.len(),
+            e_tag: Some(response.name),
+            version: None,
+        })
+    }
+
+    // async fn get_ranges(&self, location: &Path, ranges: &[Range<usize>]) -> Result<Vec<Bytes>> {
+    //     console::log_1(&"ranges".into());
+    //     let loc_string = location.to_string();
+    //     let (tx, rx) = oneshot::channel::<FileResponse>();
+    //     get_file_data(tx, loc_string);
+    //     let response = rx.await.unwrap();
+    //     let range = Range{start: 0, end: response.bytes.len()};
+    //     let bbb = [response.bytes.slice(range)];
+    //     Ok(bbb.to_vec())
+    // }
+
     async fn get_opts(&self, location: &Path, options: GetOptions) -> Result<GetResult> {
+        console::log_1(&"get".into());
         let loc_string = location.to_string();
 
-        let (tx, rx) = oneshot::channel::<Box<FileResponse>>();
+        let (tx, rx) = oneshot::channel::<FileResponse>();
 
         get_file_data(tx, loc_string);
 
         let response = rx.await.unwrap();
 
         let meta: ObjectMeta = ObjectMeta {
-            location: location.to_owned(),
+            location: location.clone(),
             last_modified: response.last_modified,
-            size: response.size,
+            size: response.bytes.len(),
             e_tag: Some(response.name),
             version: None,
         };
@@ -125,8 +151,6 @@ impl ObjectStore for OpfsFileSystem {
             None => (0..response.bytes.len(), response.bytes),
         };
         let stream = futures::stream::once(futures::future::ready(Ok(data)));
-        // let byty = resulty.bytes().await.unwrap();
-        // console::log_1(&JsValue::from_str(String::from_utf8(Vec::<u8>::from(byty)).unwrap().as_str()));
         Ok(GetResult {
             payload: GetResultPayload::Stream(stream.boxed()),
             attributes: Attributes::default(),

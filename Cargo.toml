@@ -45,6 +45,7 @@ chrono = { version = "^0.4", features = ["wasmbind", "js-sys"] }
 # all the `std::fmt` and `std::panicking` infrastructure, so isn't great for
 # code size when deploying.
 console_error_panic_hook = { version = "0.1.7", optional = true }
+wasm-bindgen-test = "^0.3.34"
 
 [dev-dependencies]
 wasm-bindgen-test = "^0.3.34"

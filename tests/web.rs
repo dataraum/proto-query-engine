@@ -19,17 +19,13 @@ wasm_bindgen_test_configure!(run_in_browser);
 async fn set_up() -> Result<(), JsError> {
     let window: Window = web_sys::window().unwrap();
     let import_handle = get_file_folder(&window).await;
-
-    web_sys::console::log_1(&import_handle.name().into());
     let options = &FileSystemGetFileOptions::new();
     options.set_create(true);
     let import_file = get_from_promise::<FileSystemFileHandle>(
         import_handle
-            .get_file_handle_with_options("12test2", options)
+            .get_file_handle_with_options("12test2.csv", options)
     )
     .await;
-
-    web_sys::console::log_1(&import_file.name().into());
     let writable =
         get_from_promise::<FileSystemWritableFileStream>(import_file.create_writable()).await;
     let _ = writable.write_with_str("a,b,c\n1,2,3").unwrap();
@@ -39,13 +35,10 @@ async fn set_up() -> Result<(), JsError> {
 
 #[wasm_bindgen_test]
 async fn pass() {
-    console_log!("atat");
     let _set_up = set_up().await;
-     console_log!("atat");
-    let _add_result = load_csv("12test2".to_string(), "test".to_string()).await;
+    let _add_result = load_csv("12test2.csv".to_string(), "test".to_string()).await;
     let result =
-        run_sql("SELECT * FROM test".to_string()).await;
-    console_log!("atat22");
+        run_sql("SELECT a, min(b) FROM test WHERE a <= b GROUP BY a LIMIT 100".to_string()).await;
 
     let js_value = JsValue::from(result.clone().err());
     let ok_value = JsValue::from(result.ok().unwrap());
@@ -64,7 +57,7 @@ async fn pass() {
     datafusion::assert_batches_eq!(
         vec![
             "+---+-------------+",
-            "| a | MIN(test.b) |",
+            "| a | min(test.b) |",
             "+---+-------------+",
             "| 1 | 2           |",
             "+---+-------------+",

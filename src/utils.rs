@@ -1,6 +1,5 @@
 use bytes::Bytes;
 use chrono::{DateTime, Utc};
-use datafusion::arrow::datatypes::ArrowNativeType;
 use futures::FutureExt;
 use js_sys::{JsString, Promise};
 use tokio::sync::oneshot::Sender;
@@ -12,13 +11,11 @@ use web_sys::{
 
 #[derive(Debug)]
 pub struct FileResponse {
-    pub size: usize,
     pub bytes: Bytes,
     pub name: String,
     pub last_modified: DateTime<Utc>,
 }
 pub async fn get_file_folder(window: &Window) -> FileSystemDirectoryHandle {
-    //let window = web_sys::window().unwrap();
     let navigator = window.navigator();
     let storage = navigator.storage();
     let root = get_from_promise::<FileSystemDirectoryHandle>(storage.get_directory()).await;
@@ -51,7 +48,7 @@ pub async fn get_from_promise<T: JsCast>(promise: Promise) -> T {
         .unwrap();
 }
 
-pub fn get_file_data<'a>(tx: Sender<Box<FileResponse>>, name: String) {
+pub fn get_file_data(tx: Sender<FileResponse>, name: String) {
     wasm_bindgen_futures::spawn_local({
         let f_name = name;
         async move {
@@ -66,12 +63,11 @@ pub fn get_file_data<'a>(tx: Sender<Box<FileResponse>>, name: String) {
             let csv_text: String = js_string.into();
             let milliseconds_since: i64 = csv_file.last_modified() as i64;
             let time = DateTime::from_timestamp_millis(milliseconds_since).unwrap();
-            let resp = Box::new(FileResponse {
-                size: csv_file.size().as_usize(),
+            let resp = FileResponse {
                 bytes: Bytes::from(csv_text),
                 name: csv_file.name().clone(),
                 last_modified: time,
-            });
+            };
             tx.send(resp).unwrap();
         }
     });
