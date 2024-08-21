@@ -51,11 +51,11 @@ pub async fn unegister_table(table_name: String) -> Result<(), JsError> {
 #[wasm_bindgen]
 pub async fn register_csv(file_name: String, table_name: String) -> Result<(), JsValue> {
     // TODO: convert to ipc during import https://stackoverflow.com/questions/76566489/convert-csv-to-apache-arrow-in-rust
-    let mut register_path = "opfs:///".to_owned();
-    register_path.push_str(&file_name.as_str());
     let ctx = &CTX;
     let table_ref = TableReference::from(table_name.clone());
     if !ctx.table_exist(table_ref).unwrap() {
+        let mut register_path = "opfs:///".to_owned();
+        register_path.push_str(&file_name.as_str());
         // register CSV as table
         ctx.register_csv(
             &table_name.as_str(),
