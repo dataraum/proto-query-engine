@@ -34,14 +34,6 @@ pub fn init_panic_hook() {
 }
 
 #[wasm_bindgen]
-pub async fn has_table(table_name: String) -> Result<JsValue, JsValue> {
-    let ctx = &CTX;
-    let table_ref = TableReference::from(table_name);
-    let has_tbl = ctx.table_exist(table_ref).unwrap();
-    Ok(JsValue::from_bool(has_tbl))
-}
-
-#[wasm_bindgen]
 pub async fn unegister_table(table_name: String) -> Result<(), JsError> {
     let table_ref = TableReference::from(table_name);
     CTX.deregister_table(table_ref).unwrap();
