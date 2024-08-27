@@ -1,5 +1,13 @@
+# OS
 .DS_Store
+Thumbs.db
 .github/
 .travis.yml
+
+# Rust
+/target
+**/*.rs.bk
 Cargo.lock
-target/
+bin/
+pkg/
+wasm-pack.log
