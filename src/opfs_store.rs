@@ -64,7 +64,7 @@ impl ObjectStore for OpfsFileSystem {
 
     async fn head(&self, location: &Path) -> Result<ObjectMeta> { 
         let loc_string = location.to_string();
-        let (tx, rx) = oneshot::channel::<Box<FileResponse>>();
+        let (tx, rx) = oneshot::channel::<FileResponse>();
         get_file_data(tx, loc_string.to_owned(), true);
         let response = rx.await.unwrap();
         Ok(ObjectMeta {
@@ -78,7 +78,7 @@ impl ObjectStore for OpfsFileSystem {
 
     async fn get_opts(&self, location: &Path, options: GetOptions) -> Result<GetResult> {
         let loc_string = location.to_string();
-        let (tx, rx) = oneshot::channel::<Box<FileResponse>>();
+        let (tx, rx) = oneshot::channel::<FileResponse>();
         get_file_data(tx, loc_string, false);
         let response = rx.await.unwrap();
 
@@ -90,7 +90,7 @@ impl ObjectStore for OpfsFileSystem {
             version: None,
         };
 
-        let bytes = response.bytes.unwrap();
+        let bytes: bytes::Bytes = response.bytes.unwrap();
         // Copied from GetRange
         let (range, data) = match options.range {
             Some(range) => {

@@ -44,7 +44,7 @@ pub async fn get_from_promise<T: JsCast>(promise: Promise) -> T {
         .unwrap();
 }
 
-pub fn get_file_data(tx: Sender<Box<FileResponse>>, name: String, head: bool) {
+pub fn get_file_data(tx: Sender<FileResponse>, name: String, head: bool) {
     wasm_bindgen_futures::spawn_local({
         let f_name = name;
         async move {
@@ -73,12 +73,12 @@ pub fn get_file_data(tx: Sender<Box<FileResponse>>, name: String, head: bool) {
             };
             let milliseconds_since: i64 = csv_file.last_modified() as i64;
             let time = DateTime::from_timestamp_millis(milliseconds_since).unwrap();
-            let resp = Box::new(FileResponse {
+            let resp = FileResponse {
                 bytes: csv_bytes,
                 name: csv_file.name(),
                 last_modified: time,
                 size: csv_file.size().as_usize(),
-            });
+            };
             tx.send(resp).unwrap();
         }
     });

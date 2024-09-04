@@ -41,7 +41,7 @@ pub async fn unegister_table(table_name: String) -> Result<(), JsError> {
 }
 
 #[wasm_bindgen]
-pub async fn register_csv(file_name: String, table_name: String) -> Result<(), JsValue> {
+pub async fn register_csv(file_name: String, table_name: String) -> Result<(), JsError> {
     // TODO: convert to ipc during import https://stackoverflow.com/questions/76566489/convert-csv-to-apache-arrow-in-rust
     let ctx = &CTX;
     let table_ref = TableReference::from(table_name.clone());
@@ -54,19 +54,18 @@ pub async fn register_csv(file_name: String, table_name: String) -> Result<(), J
             register_path.as_str(),
             CsvReadOptions::new(),
         )
-        .await
-        .unwrap();
+        .await?;
     }
     Ok(())
 }
 
 #[wasm_bindgen]
-pub async fn run_sql(sql_query: String) -> Result<JsValue, JsValue> {
+pub async fn run_sql(sql_query: String) -> Result<JsValue, JsError> {
     // create a plan to run a SQL query
-    let df = CTX.sql(&sql_query.as_str()).await.unwrap();
+    let df = CTX.sql(&sql_query.as_str()).await?;
     let schema = Schema::from(df.schema());
     // execute the plan and collect the results as Vec<RecordBatch>
-    let results: Vec<RecordBatch> = df.collect().await.unwrap();
+    let results: Vec<RecordBatch> = df.collect().await?;
 
     // serialize to in memory vector
     let mut output: Vec<u8> = Vec::new();
