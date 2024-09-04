@@ -8,7 +8,7 @@ use std::assert_eq;
 use datafusion::arrow::ipc::reader::StreamReader;
 use datafusion::arrow::record_batch::RecordBatch;
 use js_sys::Uint8Array;
-use proto_query_engine::utils::{get_file_folder, get_from_promise};
+use proto_query_engine::web_fs_utils::{get_file_folder, get_from_promise};
 use proto_query_engine::{register_csv, run_sql};
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_test::{console_log, *};

@@ -1,16 +1,18 @@
 mod opfs_store;
-pub mod utils;
+pub mod web_fs_utils;
 
 use datafusion::arrow::array::RecordBatchWriter;
 use datafusion::arrow::datatypes::Schema;
 use datafusion::arrow::ipc::writer::StreamWriter;
 use datafusion::arrow::record_batch::RecordBatch;
 use datafusion::error::Result;
+use datafusion::execution::options::ArrowReadOptions;
 use datafusion::prelude::*;
 use datafusion::sql::TableReference;
 use js_sys::Uint8Array;
 use once_cell::sync::Lazy;
 use opfs_store::OpfsFileSystem;
+use web_fs_utils::cp_csv_to_arrow;
 use std::sync::Arc;
 use std::sync::OnceLock;
 use url::Url;
@@ -41,13 +43,34 @@ pub async fn unegister_table(table_name: String) -> Result<(), JsError> {
 }
 
 #[wasm_bindgen]
-pub async fn register_csv(file_name: String, table_name: String) -> Result<(), JsError> {
-    // TODO: convert to ipc during import https://stackoverflow.com/questions/76566489/convert-csv-to-apache-arrow-in-rust
+pub async fn load_csv(file_digest: String) -> Result<(), JsError> {
+    cp_csv_to_arrow(file_digest.clone()).await.unwrap();
+    Ok(())
+}
+
+#[wasm_bindgen]
+pub async fn register_table(file_digest: String, table_name: String) -> Result<(), JsError> { 
     let ctx = &CTX;
     let table_ref = TableReference::from(table_name.clone());
     if !ctx.table_exist(table_ref).unwrap() {
-        let mut register_path = "opfs:///".to_owned();
-        register_path.push_str(&file_name.as_str());
+        let register_path = format!("opfs:///{file_digest}.arrow");
+        // register as table
+        ctx.register_arrow(
+            &table_name.as_str(),
+            register_path.as_str(),
+            ArrowReadOptions::default(),
+        )
+        .await?;
+    }
+    Ok(())
+}
+
+#[wasm_bindgen]
+pub async fn register_csv(file_digest: String, table_name: String) -> Result<(), JsError> {
+    let ctx = &CTX;
+    let table_ref = TableReference::from(table_name.clone());
+    if !ctx.table_exist(table_ref).unwrap() {
+        let register_path = format!("opfs:///{file_digest}.csv");
         // register CSV as table
         ctx.register_csv(
             &table_name.as_str(),

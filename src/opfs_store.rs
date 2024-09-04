@@ -10,7 +10,7 @@ use object_store::{
 use snafu::{ResultExt, Snafu};
 use std::sync::mpsc;
 
-use crate::utils::{get_file_data, get_files, FileResponse};
+use crate::web_fs_utils::{get_file_data, get_files, FileResponse};
 
 #[derive(Debug, Snafu)]
 pub(crate) enum InvalidGetRange {

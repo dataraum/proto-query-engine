@@ -40,6 +40,7 @@ datafusion = { version = "^41.0.0", default-features = false }
 tokio = { version = "^1.0" }
 getrandom = { version = "^0.2", features = ["js"] }
 chrono = { version = "^0.4", features = ["wasmbind", "js-sys"] }
+regex = "^1.10.6"
 # The `console_error_panic_hook` crate provides better debugging of panics by
 # logging them with `console.error`. This is great for development, but requires
 # all the `std::fmt` and `std::panicking` infrastructure, so isn't great for
