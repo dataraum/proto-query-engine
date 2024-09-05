@@ -48,31 +48,11 @@ pub async fn get_from_promise<T: JsCast>(promise: Promise) -> T {
         .unwrap();
 }
 
-pub async fn cp_csv_to_arrow(name: String) -> Result<Schema, ArrowError> {
+pub async fn cp_csv_to_arrow(u8_arr: Uint8Array, name: String) -> Result<Schema, ArrowError> {
     // moving Window as ref from the static async context to prevent loss of context
+    let mut bytes_cursor = Cursor::new(u8_arr.to_vec());
 
-    let csv_name = format!("{name}.csv");
-    let arrow_name = format!("{name}.arrow");
-    let option_csv = &FileSystemGetFileOptions::new();
-    option_csv.set_create(false);
-    let window: Window = window().unwrap();
-    let import_handle = get_file_folder(&window).await;
-    //import_handle
-    let csv_file_handle =
-        get_from_promise::<FileSystemFileHandle>(import_handle.get_file_handle_with_options(&csv_name.as_str(), &option_csv))
-            .await;
-    let csv_file = get_from_promise::<File>(csv_file_handle.get_file()).await;
-    let mut bytes_cursor = JsFuture::from(csv_file.array_buffer())
-        .map(|value| match value {
-            Ok(value) => {
-                let u8_arr = Uint8Array::new(&value);
-                Ok(Cursor::new(u8_arr.to_vec()))
-            }
-            Err(e) => Err(e),
-        })
-        .await
-        .unwrap();
-
+    // TODO make this configurable
     let delimiter: u8 = b',';
     let has_header = true;
     let null_regex = Regex::new("(NA)|$^").unwrap();
@@ -102,6 +82,9 @@ pub async fn cp_csv_to_arrow(name: String) -> Result<Schema, ArrowError> {
     let option_arrow = &FileSystemGetFileOptions::default();
     option_arrow.set_create(true);
 
+    let arrow_name = format!("{name}.arrow");
+    let window: Window = window().unwrap();
+    let import_handle = get_file_folder(&window).await;
     let arrow_file_handle =
         get_from_promise::<FileSystemFileHandle>(import_handle.get_file_handle_with_options(&arrow_name.as_str(), &option_arrow))
             .await;
