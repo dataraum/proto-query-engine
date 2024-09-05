@@ -3,7 +3,9 @@ pub mod web_fs_utils;
 
 use datafusion::arrow::array::RecordBatchWriter;
 use datafusion::arrow::datatypes::Schema;
+use datafusion::arrow::ipc::writer::IpcWriteOptions;
 use datafusion::arrow::ipc::writer::StreamWriter;
+use datafusion::arrow::ipc::MetadataVersion;
 use datafusion::arrow::record_batch::RecordBatch;
 use datafusion::error::Result;
 use datafusion::execution::options::ArrowReadOptions;
@@ -92,7 +94,9 @@ pub async fn run_sql(sql_query: String) -> Result<JsValue, JsError> {
 
     // serialize to in memory vector
     let mut output: Vec<u8> = Vec::new();
-    let mut writer = StreamWriter::try_new(&mut output, &schema).unwrap();
+
+    let options = IpcWriteOptions::try_new(8, false, MetadataVersion::V5)?.with_preserve_dict_id(false);
+    let mut writer = StreamWriter::try_new_with_options(&mut output, &schema, options).unwrap();
     for batch in results {
         writer.write(&batch).unwrap();
     }

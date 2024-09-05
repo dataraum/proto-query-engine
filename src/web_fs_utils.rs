@@ -2,18 +2,27 @@ use std::{io::Cursor, sync::Arc};
 
 use bytes::Bytes;
 use chrono::{DateTime, Utc};
-use datafusion::arrow::{csv::{reader::Format, ReaderBuilder}, datatypes::{ArrowNativeType, Schema}, error::ArrowError, ipc::{writer::{FileWriter, IpcWriteOptions}, MetadataVersion}};
+use datafusion::arrow::array::RecordBatchWriter;
+use datafusion::arrow::{
+    csv::{reader::Format, ReaderBuilder},
+    datatypes::{ArrowNativeType, Schema},
+    error::ArrowError,
+    ipc::{
+        writer::{FileWriter, IpcWriteOptions},
+        MetadataVersion,
+    },
+};
 use futures::{channel::oneshot::Sender, FutureExt};
 use js_sys::{try_iter, Promise, Uint8Array};
 use object_store::{path::Path, ObjectMeta};
+use regex::Regex;
+use std::io::Seek;
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::JsFuture;
 use web_sys::{
-    window, File, FileSystemDirectoryHandle, FileSystemFileHandle, FileSystemGetDirectoryOptions, FileSystemGetFileOptions, FileSystemWritableFileStream, Window
+    window, File, FileSystemDirectoryHandle, FileSystemFileHandle, FileSystemGetDirectoryOptions,
+    FileSystemGetFileOptions, FileSystemWritableFileStream, Window,
 };
-use std::io::Seek;
-use regex::Regex;
-use datafusion::arrow::array::RecordBatchWriter;
 
 #[derive(Debug)]
 pub struct FileResponse {
@@ -57,23 +66,33 @@ pub async fn cp_csv_to_arrow(u8_arr: Uint8Array, name: String) -> Result<Schema,
     let has_header = true;
     let null_regex = Regex::new("(NA)|$^").unwrap();
 
-    let csv_format = Format::default().with_header(has_header).with_delimiter(delimiter).with_quote(b'"').with_null_regex(null_regex);
+    let csv_format = Format::default()
+        .with_header(has_header)
+        .with_delimiter(delimiter)
+        .with_quote(b'"')
+        .with_null_regex(null_regex)
+        .with_comment(b'#');
 
-    let (schema, _) = csv_format.infer_schema(&mut bytes_cursor, Some(100)).unwrap();
+    let (schema, _) = csv_format
+        .infer_schema(&mut bytes_cursor, Some(100))
+        .unwrap();
     bytes_cursor.rewind().unwrap();
 
-    let csv_reader = ReaderBuilder::new(Arc::new(schema.clone())).with_format(csv_format).build(bytes_cursor).unwrap();
+    let csv_reader = ReaderBuilder::new(Arc::new(schema.clone()))
+        .with_format(csv_format)
+        .build(bytes_cursor)
+        .unwrap();
 
     let mut output: Vec<u8> = Vec::new();
 
-    let options = IpcWriteOptions::try_new(8, false, MetadataVersion::V5)?.with_preserve_dict_id(false);
-    let mut writer = FileWriter::try_new_with_options(&mut output, &schema.clone(), options).unwrap();
+    let options =
+        IpcWriteOptions::try_new(8, false, MetadataVersion::V5)?.with_preserve_dict_id(false);
+    let mut writer =
+        FileWriter::try_new_with_options(&mut output, &schema.clone(), options).unwrap();
 
     for batch in csv_reader {
         match batch {
-            Ok(batch) => {
-                writer.write(&batch)?
-            },
+            Ok(batch) => writer.write(&batch)?,
             Err(error) => return Err(error),
         }
     }
@@ -85,17 +104,20 @@ pub async fn cp_csv_to_arrow(u8_arr: Uint8Array, name: String) -> Result<Schema,
     let arrow_name = format!("{name}.arrow");
     let window: Window = window().unwrap();
     let import_handle = get_file_folder(&window).await;
-    let arrow_file_handle =
-        get_from_promise::<FileSystemFileHandle>(import_handle.get_file_handle_with_options(&arrow_name.as_str(), &option_arrow))
-            .await;
+    let arrow_file_handle = get_from_promise::<FileSystemFileHandle>(
+        import_handle.get_file_handle_with_options(&arrow_name.as_str(), &option_arrow),
+    )
+    .await;
 
-    let write_file_stream = get_from_promise::<FileSystemWritableFileStream>(arrow_file_handle.create_writable()).await;
-    
-    JsFuture::from(write_file_stream.write_with_u8_array(&output).unwrap()).await.unwrap();
+    let write_file_stream =
+        get_from_promise::<FileSystemWritableFileStream>(arrow_file_handle.create_writable()).await;
+
+    JsFuture::from(write_file_stream.write_with_u8_array(&output).unwrap())
+        .await
+        .unwrap();
     JsFuture::from(write_file_stream.close()).await.unwrap();
 
     Ok(schema)
-
 }
 
 pub fn get_file_data(tx: Sender<FileResponse>, name: String, head: bool) {
