@@ -45,8 +45,8 @@ pub async fn unegister_table(table_name: String) -> Result<(), JsError> {
 }
 
 #[wasm_bindgen]
-pub async fn load_csv_bytes(file_uint8: Uint8Array, file_digest: String, ) -> Result<(), JsError> {
-    cp_csv_to_arrow(file_uint8, file_digest).await.unwrap();
+pub async fn load_csv_bytes(file_uint8: Uint8Array, file_digest: String, csv_config: JsValue) -> Result<(), JsError> {
+    cp_csv_to_arrow(file_uint8, file_digest, csv_config).await.unwrap();
     Ok(())
 }
 

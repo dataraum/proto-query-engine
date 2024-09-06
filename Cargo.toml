@@ -33,6 +33,8 @@ snafu = { version = "^0.8.4", default-features = false, features = ["std"] }
 futures = "^0.3.30"
 wasm-bindgen = "^0.2.92"
 wasm-bindgen-futures = "^0.4.42"
+serde = { version = "^1.0", features = ["derive"] }
+serde-wasm-bindgen = "^0.4"
 url = "^2.5"
 once_cell = "^1.19"
 object_store = "^0.10"
@@ -46,8 +48,6 @@ regex = "^1.10.6"
 # all the `std::fmt` and `std::panicking` infrastructure, so isn't great for
 # code size when deploying.
 console_error_panic_hook = { version = "0.1.7", optional = true }
-wasm-bindgen-test = "^0.3.34"
-
 [dev-dependencies]
 wasm-bindgen-test = "^0.3.34"
 

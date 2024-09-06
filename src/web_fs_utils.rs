@@ -16,8 +16,9 @@ use futures::{channel::oneshot::Sender, FutureExt};
 use js_sys::{try_iter, Promise, Uint8Array};
 use object_store::{path::Path, ObjectMeta};
 use regex::Regex;
+use serde::Deserialize;
 use std::io::Seek;
-use wasm_bindgen::JsCast;
+use wasm_bindgen::{JsCast, JsValue};
 use wasm_bindgen_futures::JsFuture;
 use web_sys::{
     window, File, FileSystemDirectoryHandle, FileSystemFileHandle, FileSystemGetDirectoryOptions,
@@ -30,6 +31,16 @@ pub struct FileResponse {
     pub name: String,
     pub last_modified: DateTime<Utc>,
     pub size: usize,
+}
+
+#[derive(Deserialize)]
+pub struct CsvConfig {
+    pub delimiter: String,
+    pub quote: String,
+    pub comment: String,
+    pub escape: String,
+    pub null_regex: String,
+    pub truncated: bool,
 }
 
 pub async fn get_file_folder(window: &Window) -> FileSystemDirectoryHandle {
@@ -57,22 +68,39 @@ pub async fn get_from_promise<T: JsCast>(promise: Promise) -> T {
         .unwrap();
 }
 
-pub async fn cp_csv_to_arrow(u8_arr: Uint8Array, name: String) -> Result<Schema, ArrowError> {
+pub async fn cp_csv_to_arrow(
+    u8_arr: Uint8Array,
+    name: String,
+    csv_config: JsValue,
+) -> Result<Schema, ArrowError> {
     // moving Window as ref from the static async context to prevent loss of context
     let mut bytes_cursor = Cursor::new(u8_arr.to_vec());
+    let cfg: CsvConfig = serde_wasm_bindgen::from_value(csv_config).unwrap();
 
-    // TODO make this configurable
-    let delimiter: u8 = b',';
-    let has_header = true;
-    let null_regex = Regex::new("(NA)|$^").unwrap();
+    let delimiter = if cfg.delimiter.len() == 1 {
+        cfg.delimiter.as_bytes()[0]
+    } else {
+        b','
+    };
 
-    let csv_format = Format::default()
-        .with_header(has_header)
+    let mut csv_format = Format::default()
+        .with_header(true)
         .with_delimiter(delimiter)
-        .with_quote(b'"')
-        .with_null_regex(null_regex)
-        .with_comment(b'#');
+        .with_truncated_rows(cfg.truncated);
 
+    if cfg.quote.len() == 1 {
+        csv_format = csv_format.with_quote(cfg.quote.as_bytes()[0]);
+    }
+    if cfg.comment. len() == 1 {
+        csv_format = csv_format.with_comment(cfg.comment.as_bytes()[0]);
+    }
+    if cfg.escape. len() == 1 {
+        csv_format = csv_format.with_escape(cfg.escape.as_bytes()[0]);
+    }
+    if cfg.null_regex.len() > 0 && cfg.null_regex.len() <= 32 {
+        csv_format = csv_format.with_null_regex(Regex::new(&cfg.null_regex).unwrap());
+    }
+    
     let (schema, _) = csv_format
         .infer_schema(&mut bytes_cursor, Some(100))
         .unwrap();
