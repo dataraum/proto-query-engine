@@ -5,7 +5,7 @@ use chrono::{DateTime, Utc};
 use datafusion::arrow::array::RecordBatchWriter;
 use datafusion::arrow::{
     csv::{reader::Format, ReaderBuilder},
-    datatypes::{ArrowNativeType, Schema},
+    datatypes::ArrowNativeType,
     error::ArrowError,
     ipc::{
         writer::{FileWriter, IpcWriteOptions},
@@ -72,7 +72,7 @@ pub async fn cp_csv_to_arrow(
     u8_arr: Uint8Array,
     name: String,
     csv_config: JsValue,
-) -> Result<Schema, ArrowError> {
+) -> Result<(), ArrowError> {
     // moving Window as ref from the static async context to prevent loss of context
     let mut bytes_cursor = Cursor::new(u8_arr.to_vec());
     let cfg: CsvConfig = serde_wasm_bindgen::from_value(csv_config).unwrap();
@@ -91,16 +91,16 @@ pub async fn cp_csv_to_arrow(
     if cfg.quote.len() == 1 {
         csv_format = csv_format.with_quote(cfg.quote.as_bytes()[0]);
     }
-    if cfg.comment. len() == 1 {
+    if cfg.comment.len() == 1 {
         csv_format = csv_format.with_comment(cfg.comment.as_bytes()[0]);
     }
-    if cfg.escape. len() == 1 {
+    if cfg.escape.len() == 1 {
         csv_format = csv_format.with_escape(cfg.escape.as_bytes()[0]);
     }
     if cfg.null_regex.len() > 0 && cfg.null_regex.len() <= 32 {
         csv_format = csv_format.with_null_regex(Regex::new(&cfg.null_regex).unwrap());
     }
-    
+
     let (schema, _) = csv_format
         .infer_schema(&mut bytes_cursor, Some(100))
         .unwrap();
@@ -145,7 +145,7 @@ pub async fn cp_csv_to_arrow(
         .unwrap();
     JsFuture::from(write_file_stream.close()).await.unwrap();
 
-    Ok(schema)
+    Ok(())
 }
 
 pub fn get_file_data(tx: Sender<FileResponse>, name: String, head: bool) {
