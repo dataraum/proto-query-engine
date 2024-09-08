@@ -13,7 +13,7 @@ use datafusion::arrow::{
     },
 };
 use futures::{channel::oneshot::Sender, FutureExt};
-use js_sys::{try_iter, Promise, Uint8Array};
+use js_sys::{try_iter, ArrayBuffer, Promise, Uint8Array};
 use object_store::{path::Path, ObjectMeta};
 use regex::Regex;
 use serde::Deserialize;
@@ -69,12 +69,12 @@ pub async fn get_from_promise<T: JsCast>(promise: Promise) -> T {
 }
 
 pub async fn cp_csv_to_arrow(
-    u8_arr: Uint8Array,
+    u8_arr: ArrayBuffer,
     name: String,
     csv_config: JsValue,
 ) -> Result<(), ArrowError> {
     // moving Window as ref from the static async context to prevent loss of context
-    let mut bytes_cursor = Cursor::new(u8_arr.to_vec());
+    let mut bytes_cursor = Cursor::new(Uint8Array::new(&u8_arr).to_vec());
     let cfg: CsvConfig = serde_wasm_bindgen::from_value(csv_config).unwrap();
 
     let delimiter = if cfg.delimiter.len() == 1 {

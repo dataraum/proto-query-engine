@@ -11,6 +11,7 @@ use datafusion::error::Result;
 use datafusion::execution::options::ArrowReadOptions;
 use datafusion::prelude::*;
 use datafusion::sql::TableReference;
+use js_sys::ArrayBuffer;
 use js_sys::Uint8Array;
 use once_cell::sync::Lazy;
 use opfs_store::OpfsFileSystem;
@@ -45,7 +46,7 @@ pub async fn unegister_table(table_name: String) -> Result<(), JsError> {
 }
 
 #[wasm_bindgen]
-pub async fn load_csv_bytes(file_uint8: Uint8Array, file_digest: String, csv_config: JsValue) -> Result<(), JsError> {
+pub async fn load_csv_bytes(file_uint8: ArrayBuffer, file_digest: String, csv_config: JsValue) -> Result<(), JsError> {
     cp_csv_to_arrow(file_uint8, file_digest, csv_config).await.unwrap();
     Ok(())
 }
