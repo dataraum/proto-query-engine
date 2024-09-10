@@ -69,12 +69,12 @@ pub async fn get_from_promise<T: JsCast>(promise: Promise) -> T {
 }
 
 pub async fn cp_csv_to_arrow(
-    u8_arr: ArrayBuffer,
+    arr_buffer: ArrayBuffer,
     name: String,
     csv_config: JsValue,
 ) -> Result<(), ArrowError> {
     // moving Window as ref from the static async context to prevent loss of context
-    let mut bytes_cursor = Cursor::new(Uint8Array::new(&u8_arr).to_vec());
+    let mut bytes_cursor = Cursor::new(Uint8Array::new(&arr_buffer).to_vec());
     let cfg: CsvConfig = serde_wasm_bindgen::from_value(csv_config).unwrap();
 
     let delimiter = if cfg.delimiter.len() == 1 {
