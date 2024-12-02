@@ -69,14 +69,34 @@ pub async fn register_table(file_digest: String, table_name: String) -> Result<(
 }
 
 #[wasm_bindgen]
+pub async fn get_table_schema(file_digest: String, table_name: String) -> Result<JsValue, JsError> { 
+    let df = CTX.read_arrow(format!("opfs:///{file_digest}.arrow"), ArrowReadOptions::default()).await?;
+    let schema = Schema::from(df.schema());
+    let mut json_str = format!("{{\"{table_name}\":[");
+    let fields_len: i32 = schema.fields.len() as i32;
+    let mut count: i32 = 1;
+    for field in schema.fields() {
+        let name = field.name();        
+        let field_str = format!("{{\"label\":\"{name}\", \"type\":\"property\"}}");
+        json_str.push_str(&field_str);
+        if count < fields_len {
+            json_str.push_str(",");
+            count += 1;
+        }
+    }
+    json_str.push_str("]}");
+    Ok(JsValue::from(json_str))
+}
+
+#[wasm_bindgen]
 pub async fn register_csv(file_digest: String, table_name: String) -> Result<(), JsError> {
     let ctx = &CTX;
     let table_ref = TableReference::from(table_name.clone());
-    if !ctx.table_exist(table_ref).unwrap() {
+    if !ctx.table_exist(table_ref.clone()).unwrap() {
         let register_path = format!("opfs:///{file_digest}.csv");
         // register CSV as table
         ctx.register_csv(
-            &table_name.as_str(),
+            table_ref,
             register_path.as_str(),
             CsvReadOptions::new(),
         )
