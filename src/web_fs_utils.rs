@@ -126,6 +126,12 @@ pub async fn cp_csv_to_arrow(
     }
     writer.close().unwrap();
 
+    write_arrow_to_file(output, name).await;
+
+    Ok(())
+}
+
+pub async fn write_arrow_to_file(output: Vec<u8>, name: String) {
     let option_arrow = &FileSystemGetFileOptions::default();
     option_arrow.set_create(true);
 
@@ -144,8 +150,6 @@ pub async fn cp_csv_to_arrow(
         .await
         .unwrap();
     JsFuture::from(write_file_stream.close()).await.unwrap();
-
-    Ok(())
 }
 
 pub fn get_file_data(tx: Sender<FileResponse>, name: String, head: bool) {

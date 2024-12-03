@@ -3,6 +3,7 @@ pub mod web_fs_utils;
 
 use datafusion::arrow::array::RecordBatchWriter;
 use datafusion::arrow::datatypes::Schema;
+use datafusion::arrow::ipc::writer::FileWriter;
 use datafusion::arrow::ipc::writer::IpcWriteOptions;
 use datafusion::arrow::ipc::writer::StreamWriter;
 use datafusion::arrow::ipc::MetadataVersion;
@@ -15,7 +16,7 @@ use js_sys::ArrayBuffer;
 use js_sys::Uint8Array;
 use once_cell::sync::Lazy;
 use opfs_store::OpfsFileSystem;
-use web_fs_utils::cp_csv_to_arrow;
+use web_fs_utils::{cp_csv_to_arrow, write_arrow_to_file};
 use std::sync::Arc;
 use std::sync::OnceLock;
 use url::Url;
@@ -123,6 +124,29 @@ pub async fn run_sql(sql_query: String) -> Result<JsValue, JsError> {
         writer.write(&batch).unwrap();
     }
     writer.close().unwrap();
+    
     let js_arr = Uint8Array::from(&output[..]);
     Ok(JsValue::from(&js_arr))
 }
+
+#[wasm_bindgen]
+pub async fn persist_sql(sql_query: String, file_name: String) -> Result<(), JsError> {
+    // create a plan to run a SQL query
+    let df = CTX.sql(&sql_query.as_str()).await?;
+    let schema = Schema::from(df.schema());
+    // execute the plan and collect the results as Vec<RecordBatch>
+    let results: Vec<RecordBatch> = df.collect().await?;
+
+    // serialize to in memory vector
+    let mut output: Vec<u8> = Vec::new();
+
+    let options = IpcWriteOptions::try_new(8, false, MetadataVersion::V5)?.with_preserve_dict_id(false);
+    let mut writer = FileWriter::try_new_with_options(&mut output, &schema, options).unwrap();
+    for batch in results {
+        writer.write(&batch).unwrap();
+    }
+    writer.close().unwrap();
+    write_arrow_to_file(output, file_name).await;
+    Ok(())
+}
+
