@@ -69,9 +69,10 @@ pub async fn register_table(file_digest: String, table_name: String) -> Result<(
 }
 
 #[wasm_bindgen]
-pub async fn get_table_schema(file_digest: String, table_name: String) -> Result<JsValue, JsError> { 
-    let df = CTX.read_arrow(format!("opfs:///{file_digest}.arrow"), ArrowReadOptions::default()).await?;
-    let schema = Schema::from(df.schema());
+pub async fn get_table_schema(table_name: String) -> Result<JsValue, JsError> { 
+    let table_ref = TableReference::from(table_name.clone());
+    let table = CTX.table(table_ref).await?;
+    let schema = Schema::from(table.schema());
     let mut json_str = format!("{{\"{table_name}\":[");
     let fields_len: i32 = schema.fields.len() as i32;
     let mut count: i32 = 1;
