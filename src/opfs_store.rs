@@ -94,13 +94,13 @@ impl ObjectStore for OpfsFileSystem {
         // Copied from GetRange
         let (range, data) = match options.range {
             Some(range) => {
-                let len = bytes.len();
+                let len = bytes.len() as u64;
                 let r = (match range {
                     GetRange::Bounded(r) => {
                         if r.start >= len {
                             Err(InvalidGetRange::StartTooLarge {
-                                requested: r.start,
-                                length: len,
+                                requested: r.start as usize,
+                                length: len as usize,
                             })
                         } else if r.end > len {
                             Ok(r.start..len)
@@ -111,8 +111,8 @@ impl ObjectStore for OpfsFileSystem {
                     GetRange::Offset(o) => {
                         if o >= len {
                             Err(InvalidGetRange::StartTooLarge {
-                                requested: o,
-                                length: len,
+                                requested: o as usize,
+                                length: len as usize,
                             })
                         } else {
                             Ok(o..len)
@@ -121,9 +121,9 @@ impl ObjectStore for OpfsFileSystem {
                     GetRange::Suffix(n) => Ok(len.saturating_sub(n)..len),
                 })
                 .context(RangeSnafu)?;
-                (r.clone(), bytes.slice(r))
+                (r.clone(), bytes.slice(r.start as usize..r.end as usize))
             }
-            None => (0..bytes.len(), bytes),
+            None => (0..bytes.len() as u64, bytes),
         };
         let stream = futures::stream::once(futures::future::ready(Ok(data)));
         Ok(GetResult {
@@ -139,13 +139,13 @@ impl ObjectStore for OpfsFileSystem {
             source: Box::new(Error::NotImplemented),
         });
     }
-    fn list(&self, _: Option<&Path>) -> BoxStream<'_, Result<ObjectMeta>> {
+    fn list(&self, _: Option<&Path>) -> BoxStream<'static, Result<ObjectMeta>> {
         let (tx, rx) = mpsc::channel::<ObjectMeta>();
 
         get_files(tx);
 
         let s: Vec<_> = rx.into_iter().map(|meta| Ok(meta)).collect();
-        return futures::stream::iter(s).boxed();
+        futures::stream::iter(s).boxed()
     }
 
     async fn list_with_delimiter(&self, _: Option<&Path>) -> Result<ListResult> {

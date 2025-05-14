@@ -5,7 +5,6 @@ use chrono::{DateTime, Utc};
 use datafusion::arrow::array::RecordBatchWriter;
 use datafusion::arrow::{
     csv::{reader::Format, ReaderBuilder},
-    datatypes::ArrowNativeType,
     error::ArrowError,
     ipc::{
         writer::{FileWriter, IpcWriteOptions},
@@ -30,7 +29,7 @@ pub struct FileResponse {
     pub bytes: Option<Bytes>,
     pub name: String,
     pub last_modified: DateTime<Utc>,
-    pub size: usize,
+    pub size: u64,
 }
 
 #[derive(Deserialize)]
@@ -102,7 +101,7 @@ pub async fn cp_csv_to_arrow(
     }
 
     let (schema, _) = csv_format
-        .infer_schema(&mut bytes_cursor, Some(100))
+        .infer_schema(&mut bytes_cursor, Some(1000))
         .unwrap();
     bytes_cursor.rewind().unwrap();
 
@@ -114,7 +113,7 @@ pub async fn cp_csv_to_arrow(
     let mut output: Vec<u8> = Vec::new();
 
     let options =
-        IpcWriteOptions::try_new(8, false, MetadataVersion::V5)?.with_preserve_dict_id(false);
+        IpcWriteOptions::try_new(8, false, MetadataVersion::V5)?;
     let mut writer =
         FileWriter::try_new_with_options(&mut output, &schema.clone(), options).unwrap();
 
@@ -185,7 +184,7 @@ pub fn get_file_data(tx: Sender<FileResponse>, name: String, head: bool) {
                 bytes: csv_bytes,
                 name: csv_file.name(),
                 last_modified: time,
-                size: csv_file.size().as_usize(),
+                size: csv_file.size() as u64,
             };
             tx.send(resp).unwrap();
         }
@@ -216,7 +215,7 @@ pub fn get_files(tx: std::sync::mpsc::Sender<ObjectMeta>) {
                 let meta = ObjectMeta {
                     location: Path::parse(path_str).unwrap(),
                     last_modified: time.unwrap(),
-                    size: file.size().as_usize(),
+                    size: file.size() as u64,
                     e_tag: None,
                     version: None,
                 };

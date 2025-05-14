@@ -1,0 +1,5 @@
+[target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))']
+rustflags = ['--cfg', 'getrandom_backend="wasm_js"']
+
+[build]
+target = "wasm32-unknown-unknown"

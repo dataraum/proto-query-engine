@@ -118,7 +118,7 @@ pub async fn run_sql(sql_query: String) -> Result<JsValue, JsError> {
     // serialize to in memory vector
     let mut output: Vec<u8> = Vec::new();
 
-    let options = IpcWriteOptions::try_new(8, false, MetadataVersion::V5)?.with_preserve_dict_id(false);
+    let options = IpcWriteOptions::try_new(8, false, MetadataVersion::V5)?;
     let mut writer = StreamWriter::try_new_with_options(&mut output, &schema, options).unwrap();
     for batch in results {
         writer.write(&batch).unwrap();
@@ -140,7 +140,7 @@ pub async fn persist_sql(sql_query: String, file_name: String) -> Result<(), JsE
     // serialize to in memory vector
     let mut output: Vec<u8> = Vec::new();
 
-    let options = IpcWriteOptions::try_new(8, false, MetadataVersion::V5)?.with_preserve_dict_id(false);
+    let options = IpcWriteOptions::try_new(8, false, MetadataVersion::V5)?;
     let mut writer = FileWriter::try_new_with_options(&mut output, &schema, options).unwrap();
     for batch in results {
         writer.write(&batch).unwrap();
