@@ -128,7 +128,13 @@ pub async fn run_sql(sql_query: String) -> Result<JsValue, JsError> {
     let js_arr = Uint8Array::from(&output[..]);
     Ok(JsValue::from(&js_arr))
 }
-
+// interesting option to persist the result of a SQL query to a file
+// pub async fn persist_sql(sql_query: String, file_name: String) -> Result<(), JsError> {
+//     // create a plan to run a SQL query
+//     let df = CTX.sql(&sql_query.as_str()).await?;
+//     df.write_table(file_name.as_str(), DataFrameWriteOptions::new()).await?;
+//     Ok(())
+// }
 #[wasm_bindgen]
 pub async fn persist_sql(sql_query: String, file_name: String) -> Result<(), JsError> {
     // create a plan to run a SQL query
